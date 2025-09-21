@@ -94,10 +94,6 @@ def end_meeting(notes: str):
 with gr.Blocks(title="Insight Cascade", theme=gr.themes.Soft()) as app:
     gr.Markdown("# 🚀 Insight Cascade")
 
-    # 狀態欄
-    with gr.Row():
-        version_label = gr.Label("v0.1.0-MVP")
-
     meeting_topic_textbox = gr.Textbox(
         value=state.meeting_topic,
         label="會議主題 (Meeting Topic)",
@@ -132,6 +128,12 @@ with gr.Blocks(title="Insight Cascade", theme=gr.themes.Soft()) as app:
         end_meeting_button = gr.Button("結束會議並匯出全部")
 
     status_update = gr.Markdown()
+
+    # 頁腳
+    with gr.Row():
+        gr.HTML("<div style='flex-grow: 1'></div>") # Spacer
+        settings_button = gr.Button("設定 (Phase 2)", interactive=False)
+        gr.Label("v0.1.0-MVP")
 
     # --- 連接事件與函式 ---
     send_button.click(
