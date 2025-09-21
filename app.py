@@ -97,6 +97,59 @@ def end_meeting(notes: str):
 
     return "", "", f"會議結束。\n{conv_msg}\n{notes_msg}\n\n應用程式已重置，可以開始新會議。"
 
+def restore_session(file_obj):
+    """從上傳的 JSON 檔案還原會議狀態"""
+    if file_obj is None:
+        return state.meeting_topic, state.format_history_for_display(), "", "未上傳任何檔案。"
+
+    data = load_from_json(file_obj.name)
+    if not data:
+        return state.meeting_topic, state.format_history_for_display(), "", f"無法讀取或解析檔案: {file_obj.name}"
+
+    try:
+        # 還原狀態
+        state.meeting_topic = data.get("meeting_topic", "無標題")
+        state.conversation_history = data.get("history", [])
+        notes = data.get("notes", "") # 假設筆記也可能在同一個檔案中
+
+        # 更新 UI
+        return state.meeting_topic, state.format_history_for_display(), notes, "會議紀錄已成功還原。"
+    except KeyError as e:
+        return state.meeting_topic, state.format_history_for_display(), "", f"檔案格式不符，缺少鍵: {e}"
+
+def toggle_settings(is_open):
+    return gr.update(open=not is_open)
+
+def save_prompts(global_prompt, analyst_prompt, strategist_prompt, critic_prompt):
+    state.prompts["global"] = global_prompt
+    state.prompts["analyst"] = analyst_prompt
+    state.prompts["strategist"] = strategist_prompt
+    state.prompts["critic"] = critic_prompt
+    return "提示詞已成功儲存於本次會話。"
+
+def export_prompts():
+    filepath = save_prompts_to_json(state.prompts)
+    if filepath:
+        return gr.update(value=filepath, visible=True), "提示詞已匯出。"
+    return gr.update(visible=False), "提示詞匯出失敗。"
+
+def import_prompts(file_obj):
+    if file_obj is None:
+        return "未上傳任何檔案。", "", "", "", ""
+
+    data = load_from_json(file_obj.name)
+    if not data:
+        return f"無法讀取或解析檔案: {file_obj.name}", state.prompts["global"], state.prompts["analyst"], state.prompts["strategist"], state.prompts["critic"]
+
+    # 更新狀態
+    state.prompts["global"] = data.get("global", "")
+    state.prompts["analyst"] = data.get("analyst", DEFAULT_ANALYST_TEMPLATE)
+    state.prompts["strategist"] = data.get("strategist", DEFAULT_STRATEGIST_TEMPLATE)
+    state.prompts["critic"] = data.get("critic", DEFAULT_CRITIC_TEMPLATE)
+
+    # 更新 UI
+    return "提示詞已成功匯入並更新。", state.prompts["global"], state.prompts["analyst"], state.prompts["strategist"], state.prompts["critic"]
+
 # --- Gradio UI 佈局 ---
 with gr.Blocks(title="Insight Cascade", theme=gr.themes.Soft()) as app:
     gr.Markdown("# 🚀 Insight Cascade")
@@ -107,7 +160,6 @@ with gr.Blocks(title="Insight Cascade", theme=gr.themes.Soft()) as app:
         interactive=True
     )
     topic_status = gr.Markdown()
-    meeting_topic_textbox.submit(update_meeting_topic, inputs=meeting_topic_textbox, outputs=topic_status)
 
     # 中部工作區
     with gr.Row():
@@ -157,28 +209,9 @@ with gr.Blocks(title="Insight Cascade", theme=gr.themes.Soft()) as app:
         gr.HTML("<div style='flex-grow: 1'></div>") # Spacer
         settings_button = gr.Button("⚙️ 設定", elem_classes=["version-label"])
 
-def restore_session(file_obj):
-    """從上傳的 JSON 檔案還原會議狀態"""
-    if file_obj is None:
-        return state.meeting_topic, state.format_history_for_display(), "", "未上傳任何檔案。"
-
-    data = load_from_json(file_obj.name)
-    if not data:
-        return state.meeting_topic, state.format_history_for_display(), "", f"無法讀取或解析檔案: {file_obj.name}"
-
-    try:
-        # 還原狀態
-        state.meeting_topic = data.get("meeting_topic", "無標題")
-        state.conversation_history = data.get("history", [])
-        notes = data.get("notes", "") # 假設筆記也可能在同一個檔案中
-
-        # 更新 UI
-        return state.meeting_topic, state.format_history_for_display(), notes, "會議紀錄已成功還原。"
-    except KeyError as e:
-        return state.meeting_topic, state.format_history_for_display(), "", f"檔案格式不符，缺少鍵: {e}"
-
-
     # --- 連接事件與函式 ---
+    meeting_topic_textbox.submit(update_meeting_topic, inputs=meeting_topic_textbox, outputs=topic_status)
+
     send_button.click(
         process_question,
         inputs=[question_input, chairman_notes],
@@ -200,21 +233,11 @@ def restore_session(file_obj):
         outputs=[meeting_topic_textbox, conversation_panel, chairman_notes, status_update]
     )
 
-    def toggle_settings(is_open):
-        return gr.update(open=not is_open)
-
     settings_button.click(
         toggle_settings,
         inputs=[settings_accordion],
         outputs=[settings_accordion]
     )
-
-    def save_prompts(global_prompt, analyst_prompt, strategist_prompt, critic_prompt):
-        state.prompts["global"] = global_prompt
-        state.prompts["analyst"] = analyst_prompt
-        state.prompts["strategist"] = strategist_prompt
-        state.prompts["critic"] = critic_prompt
-        return "提示詞已成功儲存於本次會話。"
 
     save_prompts_button.click(
         save_prompts,
@@ -222,33 +245,10 @@ def restore_session(file_obj):
         outputs=[status_update]
     )
 
-    def export_prompts():
-        filepath = save_prompts_to_json(state.prompts)
-        if filepath:
-            return gr.update(value=filepath, visible=True), "提示詞已匯出。"
-        return gr.update(visible=False), "提示詞匯出失敗。"
-
     export_prompts_button.click(
         export_prompts,
         outputs=[prompt_file_output, status_update]
     )
-
-    def import_prompts(file_obj):
-        if file_obj is None:
-            return "未上傳任何檔案。", "", "", "", ""
-
-        data = load_from_json(file_obj.name)
-        if not data:
-            return f"無法讀取或解析檔案: {file_obj.name}", state.prompts["global"], state.prompts["analyst"], state.prompts["strategist"], state.prompts["critic"]
-
-        # 更新狀態
-        state.prompts["global"] = data.get("global", "")
-        state.prompts["analyst"] = data.get("analyst", DEFAULT_ANALYST_TEMPLATE)
-        state.prompts["strategist"] = data.get("strategist", DEFAULT_STRATEGIST_TEMPLATE)
-        state.prompts["critic"] = data.get("critic", DEFAULT_CRITIC_TEMPLATE)
-
-        # 更新 UI
-        return "提示詞已成功匯入並更新。", state.prompts["global"], state.prompts["analyst"], state.prompts["strategist"], state.prompts["critic"]
 
     import_prompts_button.upload(
         import_prompts,
