@@ -38,10 +38,36 @@ def save_to_json(meeting_topic: str, content: dict, file_type: str):
         print(f"儲存檔案時發生錯誤: {e}")
         return None
 
+def load_from_json(filepath: str) -> dict:
+    """
+    從指定的路徑讀取 JSON 檔案並解析。
+
+    Args:
+        filepath (str): JSON 檔案的路徑。
+
+    Returns:
+        dict: 解析後的字典內容，如果失敗則返回 None。
+    """
+    try:
+        with open(filepath, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        print(f"成功從 {filepath} 讀取資料。")
+        return data
+    except FileNotFoundError:
+        print(f"錯誤: 找不到檔案 {filepath}")
+        return None
+    except json.JSONDecodeError:
+        print(f"錯誤: {filepath} 的 JSON 格式不正確。")
+        return None
+    except Exception as e:
+        print(f"讀取檔案時發生預期外的錯誤: {e}")
+        return None
+
 if __name__ == '__main__':
     # 用於單元測試的範例
     print("執行 file_handler.py 單元測試...")
 
+    # --- 測試寫入 ---
     mock_topic = "測試會議主題"
     mock_conversation = {
         "meeting_topic": mock_topic,
@@ -73,4 +99,47 @@ if __name__ == '__main__':
     else:
         print("主席筆記檔案創建失敗。")
 
-    print("單元測試結束。")
+    # --- 測試讀取 ---
+    print("\n--- 測試讀取功能 ---")
+    if conv_path:
+        loaded_data = load_from_json(conv_path)
+        if loaded_data and loaded_data["meeting_topic"] == mock_topic:
+            print("讀取並驗證對話紀錄成功。")
+        else:
+            print("讀取或驗證對話紀錄失敗。")
+
+    # 測試清理
+    if conv_path and os.path.exists(conv_path):
+        os.remove(conv_path)
+    if notes_path and os.path.exists(notes_path):
+        os.remove(notes_path)
+    print("\n單元測試結束。")
+
+def save_prompts_to_json(prompts: dict):
+    """
+    將提示詞配置儲存為 JSON 檔案。
+
+    Args:
+        prompts (dict): 包含提示詞的字典。
+
+    Returns:
+        str: 儲存的檔案路徑。
+    """
+    # 確保 outputs 資料夾存在
+    if not os.path.exists(OUTPUTS_DIR):
+        os.makedirs(OUTPUTS_DIR)
+
+    # 格式化檔案名稱
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    filename = f"InsightCascade_Prompts_{timestamp}.json"
+    filepath = os.path.join(OUTPUTS_DIR, filename)
+
+    # 寫入 JSON 檔案
+    try:
+        with open(filepath, 'w', encoding='utf-8') as f:
+            json.dump(prompts, f, ensure_ascii=False, indent=4)
+        print(f"成功儲存提示詞至: {filepath}")
+        return filepath
+    except Exception as e:
+        print(f"儲存提示詞時發生錯誤: {e}")
+        return None

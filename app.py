@@ -3,8 +3,8 @@ import time
 from datetime import datetime
 
 # 導入核心邏輯和檔案處理功能
-from core_logic import run_main_chain
-from file_handler import save_to_json
+from core_logic import run_main_chain, DEFAULT_ANALYST_TEMPLATE, DEFAULT_STRATEGIST_TEMPLATE, DEFAULT_CRITIC_TEMPLATE
+from file_handler import save_to_json, load_from_json, save_prompts_to_json
 
 # --- 應用程式狀態管理 ---
 # 使用一個簡單的 class 來管理狀態，避免使用全域變數
@@ -12,6 +12,13 @@ class AppState:
     def __init__(self):
         self.conversation_history = []
         self.meeting_topic = "創意激發會議"
+        # 提示詞管理
+        self.prompts = {
+            "global": "",
+            "analyst": DEFAULT_ANALYST_TEMPLATE,
+            "strategist": DEFAULT_STRATEGIST_TEMPLATE,
+            "critic": DEFAULT_CRITIC_TEMPLATE,
+        }
 
     def add_to_history(self, user_question: str, ai_response: dict):
         self.conversation_history.append({"user": user_question, "ai": ai_response})
@@ -45,8 +52,8 @@ def process_question(question: str, notes: str):
     if not question.strip():
         return state.format_history_for_display(), notes, "問題不能為空。"
 
-    # 執行 AI 鏈
-    ai_response = run_main_chain(question)
+    # 執行 AI 鏈，傳入自訂提示詞
+    ai_response = run_main_chain(question, state.prompts)
 
     # 更新歷史紀錄
     state.add_to_history(question, ai_response)
@@ -129,10 +136,47 @@ with gr.Blocks(title="Insight Cascade", theme=gr.themes.Soft()) as app:
 
     status_update = gr.Markdown()
 
+    # 設定區塊 (摺疊)
+    with gr.Accordion("提示詞設定 (Prompt Settings)", open=False) as settings_accordion:
+        gr.Markdown("在這裡客製化 AI 的行為。")
+        global_prompt_textbox = gr.Textbox(label="全域系統提示詞 (Global System Prompt)", lines=3)
+        with gr.Row():
+            analyst_prompt_textbox = gr.Textbox(label="文件分析師 (Analyst)", value=DEFAULT_ANALYST_TEMPLATE, lines=10)
+            strategist_prompt_textbox = gr.Textbox(label="創意策略師 (Strategist)", value=DEFAULT_STRATEGIST_TEMPLATE, lines=10)
+            critic_prompt_textbox = gr.Textbox(label="批判性思考者 (Critic)", value=DEFAULT_CRITIC_TEMPLATE, lines=10)
+        with gr.Row():
+            save_prompts_button = gr.Button("儲存提示詞")
+            export_prompts_button = gr.Button("匯出提示詞")
+            import_prompts_button = gr.UploadButton("匯入提示詞 (.json)", file_types=["json"])
+
+        prompt_file_output = gr.File(label="下載提示詞檔案", visible=False)
+
     # 頁腳
     with gr.Row(elem_classes=["footer"]):
+        upload_button = gr.UploadButton("匯入會議紀錄 (.json)", file_types=["json"])
         gr.HTML("<div style='flex-grow: 1'></div>") # Spacer
-        gr.Markdown("設定 v0.1.0-MVP", elem_classes=["version-label"])
+        settings_button = gr.Button("⚙️ 設定", elem_classes=["version-label"])
+
+def restore_session(file_obj):
+    """從上傳的 JSON 檔案還原會議狀態"""
+    if file_obj is None:
+        return state.meeting_topic, state.format_history_for_display(), "", "未上傳任何檔案。"
+
+    data = load_from_json(file_obj.name)
+    if not data:
+        return state.meeting_topic, state.format_history_for_display(), "", f"無法讀取或解析檔案: {file_obj.name}"
+
+    try:
+        # 還原狀態
+        state.meeting_topic = data.get("meeting_topic", "無標題")
+        state.conversation_history = data.get("history", [])
+        notes = data.get("notes", "") # 假設筆記也可能在同一個檔案中
+
+        # 更新 UI
+        return state.meeting_topic, state.format_history_for_display(), notes, "會議紀錄已成功還原。"
+    except KeyError as e:
+        return state.meeting_topic, state.format_history_for_display(), "", f"檔案格式不符，缺少鍵: {e}"
+
 
     # --- 連接事件與函式 ---
     send_button.click(
@@ -149,6 +193,68 @@ with gr.Blocks(title="Insight Cascade", theme=gr.themes.Soft()) as app:
         inputs=[chairman_notes],
         outputs=[conversation_panel, chairman_notes, status_update]
     ).then(lambda: "", outputs=question_input) # 清空問題輸入框
+
+    upload_button.upload(
+        restore_session,
+        inputs=[upload_button],
+        outputs=[meeting_topic_textbox, conversation_panel, chairman_notes, status_update]
+    )
+
+    def toggle_settings(is_open):
+        return gr.update(open=not is_open)
+
+    settings_button.click(
+        toggle_settings,
+        inputs=[settings_accordion],
+        outputs=[settings_accordion]
+    )
+
+    def save_prompts(global_prompt, analyst_prompt, strategist_prompt, critic_prompt):
+        state.prompts["global"] = global_prompt
+        state.prompts["analyst"] = analyst_prompt
+        state.prompts["strategist"] = strategist_prompt
+        state.prompts["critic"] = critic_prompt
+        return "提示詞已成功儲存於本次會話。"
+
+    save_prompts_button.click(
+        save_prompts,
+        inputs=[global_prompt_textbox, analyst_prompt_textbox, strategist_prompt_textbox, critic_prompt_textbox],
+        outputs=[status_update]
+    )
+
+    def export_prompts():
+        filepath = save_prompts_to_json(state.prompts)
+        if filepath:
+            return gr.update(value=filepath, visible=True), "提示詞已匯出。"
+        return gr.update(visible=False), "提示詞匯出失敗。"
+
+    export_prompts_button.click(
+        export_prompts,
+        outputs=[prompt_file_output, status_update]
+    )
+
+    def import_prompts(file_obj):
+        if file_obj is None:
+            return "未上傳任何檔案。", "", "", "", ""
+
+        data = load_from_json(file_obj.name)
+        if not data:
+            return f"無法讀取或解析檔案: {file_obj.name}", state.prompts["global"], state.prompts["analyst"], state.prompts["strategist"], state.prompts["critic"]
+
+        # 更新狀態
+        state.prompts["global"] = data.get("global", "")
+        state.prompts["analyst"] = data.get("analyst", DEFAULT_ANALYST_TEMPLATE)
+        state.prompts["strategist"] = data.get("strategist", DEFAULT_STRATEGIST_TEMPLATE)
+        state.prompts["critic"] = data.get("critic", DEFAULT_CRITIC_TEMPLATE)
+
+        # 更新 UI
+        return "提示詞已成功匯入並更新。", state.prompts["global"], state.prompts["analyst"], state.prompts["strategist"], state.prompts["critic"]
+
+    import_prompts_button.upload(
+        import_prompts,
+        inputs=[import_prompts_button],
+        outputs=[status_update, global_prompt_textbox, analyst_prompt_textbox, strategist_prompt_textbox, critic_prompt_textbox]
+    )
 
 # --- 啟動應用程式 ---
 if __name__ == "__main__":

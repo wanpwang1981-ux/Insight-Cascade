@@ -7,14 +7,52 @@ from dotenv import load_dotenv
 # 載入環境變數 (例如 OPENAI_API_KEY)
 load_dotenv()
 
-def run_main_chain(question: str) -> dict:
+# --- 預設提示詞模板 ---
+DEFAULT_ANALYST_TEMPLATE = """
+作為一位專業的文件分析師，你的任務是從使用者提供的問題中，提取關鍵資訊和潛在的數據點。
+專注於客觀事實，避免主觀臆測。你的分析將作為後續創意發想的基礎。
+使用者問題: {question}
+你的分析:
+"""
+
+DEFAULT_STRATEGIST_TEMPLATE = """
+作為一位充滿想像力的創意策略師，你的任務是基於文件分析師的客觀分析，提出三個創新且可行的解決方案或點子。
+思考要發散，但不能脫離現實。
+分析師的結論:
+{analysis}
+你的三個創意策略:
+1. ...
+2. ...
+3. ...
+"""
+
+DEFAULT_CRITIC_TEMPLATE = """
+作為一位嚴謹的批判性思考者，你的任務是評估創意策略師提出的方案。
+請從風險、成本、可行性三個角度，逐一分析每個策略的潛在問題，並給出最終的綜合建議。
+創意策略:
+{strategies}
+你的批判性評估:
+- 策略一:
+  - 風險: ...
+  - 成本: ...
+  - 可行性: ...
+- 策略二:
+  ...
+- 策略三:
+  ...
+綜合建議:
+...
+"""
+
+def run_main_chain(question: str, custom_prompts: dict) -> dict:
     """
     執行主要的 AI 對話鏈。
     如果未設定 OPENAI_API_KEY，則返回模擬回應。
-    否則，動態建立並執行 LangChain。
+    否則，使用提供的提示詞動態建立並執行 LangChain。
 
     Args:
         question (str): 使用者提出的問題。
+        custom_prompts (dict): 包含 'analyst', 'strategist', 'critic' 提示詞的字典。
 
     Returns:
         dict: 包含所有 AI 專家產出的字典。
@@ -31,48 +69,21 @@ def run_main_chain(question: str) -> dict:
         # --- 動態初始化 LLM 和 Chains ---
         llm = ChatOpenAI(temperature=0.7, model_name="gpt-3.5-turbo")
 
+        # 結合全域提示詞與分析師提示詞
+        global_prompt = custom_prompts.get("global", "")
+        analyst_template = global_prompt + "\n\n" + custom_prompts.get("analyst", DEFAULT_ANALYST_TEMPLATE)
+
         # 1. 分析師
-        analyst_template = """
-        作為一位專業的文件分析師，你的任務是從使用者提供的問題中，提取關鍵資訊和潛在的數據點。
-        專注於客觀事實，避免主觀臆測。你的分析將作為後續創意發想的基礎。
-        使用者問題: {question}
-        你的分析:
-        """
         analyst_prompt = PromptTemplate(input_variables=["question"], template=analyst_template)
         analyst_chain = LLMChain(llm=llm, prompt=analyst_prompt, output_key="analysis")
 
         # 2. 策略師
-        strategist_template = """
-        作為一位充滿想像力的創意策略師，你的任務是基於文件分析師的客觀分析，提出三個創新且可行的解決方案或點子。
-        思考要發散，但不能脫離現實。
-        分析師的結論:
-        {analysis}
-        你的三個創意策略:
-        1. ...
-        2. ...
-        3. ...
-        """
+        strategist_template = custom_prompts.get("strategist", DEFAULT_STRATEGIST_TEMPLATE)
         strategist_prompt = PromptTemplate(input_variables=["analysis"], template=strategist_template)
         strategist_chain = LLMChain(llm=llm, prompt=strategist_prompt, output_key="strategies")
 
         # 3. 批判者
-        critic_template = """
-        作為一位嚴謹的批判性思考者，你的任務是評估創意策略師提出的方案。
-        請從風險、成本、可行性三個角度，逐一分析每個策略的潛在問題，並給出最終的綜合建議。
-        創意策略:
-        {strategies}
-        你的批判性評估:
-        - 策略一:
-          - 風險: ...
-          - 成本: ...
-          - 可行性: ...
-        - 策略二:
-          ...
-        - 策略三:
-          ...
-        綜合建議:
-        ...
-        """
+        critic_template = custom_prompts.get("critic", DEFAULT_CRITIC_TEMPLATE)
         critic_prompt = PromptTemplate(input_variables=["strategies"], template=critic_template)
         critic_chain = LLMChain(llm=llm, prompt=critic_prompt, output_key="critique")
 
