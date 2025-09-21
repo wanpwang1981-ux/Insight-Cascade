@@ -130,10 +130,9 @@ with gr.Blocks(title="Insight Cascade", theme=gr.themes.Soft()) as app:
     status_update = gr.Markdown()
 
     # 頁腳
-    with gr.Row():
+    with gr.Row(elem_classes=["footer"]):
         gr.HTML("<div style='flex-grow: 1'></div>") # Spacer
-        settings_button = gr.Button("設定 (Phase 2)", interactive=False)
-        gr.Label("v0.1.0-MVP")
+        settings_button = gr.Button("設定 v0.1.0-MVP", interactive=False)
 
     # --- 連接事件與函式 ---
     send_button.click(
