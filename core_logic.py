@@ -1,5 +1,6 @@
 import os
 from langchain_community.llms import Ollama
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.prompts import PromptTemplate
 from langchain.chains import LLMChain, SequentialChain
 
@@ -40,51 +41,78 @@ DEFAULT_CRITIC_TEMPLATE = """
 ...
 """
 
-def run_main_chain(question: str, model_name: str, custom_prompts: dict) -> dict:
+def run_main_chain(question: str, roles: list) -> dict:
     """
-    使用 Ollama 執行主要的 AI 對話鏈。
+    根據動態的角色列表，建立並執行一個多供應商的循序 AI 鏈。
 
     Args:
         question (str): 使用者提出的問題。
-        model_name (str): 要使用的 Ollama 模型名稱。
-        custom_prompts (dict): 包含 'analyst', 'strategist', 'critic' 提示詞的字典。
+        roles (list): 一個包含多個角色設定字典的列表。
 
     Returns:
         dict: 包含所有 AI 專家產出的字典，或在出錯時返回錯誤訊息。
     """
+    chains = []
+    output_keys = []
+
     try:
-        # --- 動態初始化 LLM 和 Chains ---
-        llm = Ollama(model=model_name)
+        for i, role in enumerate(roles):
+            role_name = role.get("name", f"角色 {i+1}")
+            provider = role.get("provider", "Ollama")
+            prompt_template_str = role.get("prompt", "請回答： {input}")
 
-        # 結合全域提示詞與分析師提示詞
-        global_prompt = custom_prompts.get("global", "")
-        analyst_template = global_prompt + "\n\n" + custom_prompts.get("analyst", DEFAULT_ANALYST_TEMPLATE)
+            # --- 動態選擇並初始化 LLM ---
+            if provider == "Ollama":
+                model_name = role.get("model_name", "llama3")
+                try:
+                    llm = Ollama(model=model_name)
+                except Exception as e:
+                    raise Exception(f"角色 '{role_name}' 的 Ollama 模型 '{model_name}' 連接失敗: {e}")
 
-        # 1. 分析師
-        analyst_prompt = PromptTemplate(input_variables=["question"], template=analyst_template)
-        analyst_chain = LLMChain(llm=llm, prompt=analyst_prompt, output_key="analysis")
+            elif provider == "Gemini":
+                api_key = role.get("api_key")
+                if not api_key:
+                    raise ValueError(f"角色 '{role_name}' 已選擇 Gemini，但未提供 API 金鑰。")
+                try:
+                    llm = ChatGoogleGenerativeAI(model="gemini-pro", google_api_key=api_key,
+                                                 convert_system_message_to_human=True)
+                except Exception as e:
+                    raise Exception(f"角色 '{role_name}' 的 Gemini 模型連接失敗: {e}")
+            else:
+                raise ValueError(f"角色 '{role_name}' 的 AI 提供商 '{provider}' 不被支援。")
 
-        # 2. 策略師
-        strategist_template = custom_prompts.get("strategist", DEFAULT_STRATEGIST_TEMPLATE)
-        strategist_prompt = PromptTemplate(input_variables=["analysis"], template=strategist_template)
-        strategist_chain = LLMChain(llm=llm, prompt=strategist_prompt, output_key="strategies")
+            # --- 動態建立 Prompt 和 Chain ---
+            # 決定輸入變數
+            if i == 0:
+                input_variables = ["question"]
+            else:
+                # 前一個鏈的輸出是下一個鏈的輸入
+                prev_output_key = output_keys[i-1]
+                input_variables = [prev_output_key]
 
-        # 3. 批判者
-        critic_template = custom_prompts.get("critic", DEFAULT_CRITIC_TEMPLATE)
-        critic_prompt = PromptTemplate(input_variables=["strategies"], template=critic_template)
-        critic_chain = LLMChain(llm=llm, prompt=critic_prompt, output_key="critique")
+            # 為本鏈定義輸出變數
+            current_output_key = f"output_{i+1}_{role_name.replace(' ', '_').lower()}"
+            output_keys.append(current_output_key)
 
-        # 整合為循序鏈
+            prompt = PromptTemplate(template=prompt_template_str, input_variables=input_variables)
+            chain = LLMChain(llm=llm, prompt=prompt, output_key=current_output_key)
+            chains.append(chain)
+
+        if not chains:
+            return {"error": "沒有可執行的 AI 角色。"}
+
+        # --- 整合為循序鏈 ---
         main_chain = SequentialChain(
-            chains=[analyst_chain, strategist_chain, critic_chain],
+            chains=chains,
             input_variables=["question"],
-            output_variables=["analysis", "strategies", "critique"],
+            output_variables=output_keys,
             verbose=True
         )
 
         # 執行鏈並獲得結果
         result = main_chain({"question": question})
         return result
+
     except Exception as e:
         print(f"執行 LangChain 時發生錯誤: {e}")
         return {"error": str(e)}

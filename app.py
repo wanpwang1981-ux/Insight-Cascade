@@ -1,25 +1,23 @@
 import gradio as gr
 import time
 from datetime import datetime
+import json
+import os
 
 # 導入核心邏輯和檔案處理功能
 from core_logic import run_main_chain, DEFAULT_ANALYST_TEMPLATE, DEFAULT_STRATEGIST_TEMPLATE, DEFAULT_CRITIC_TEMPLATE
-from file_handler import save_to_json, load_from_json, save_prompts_to_json
+from file_handler import save_to_json, load_from_json
 
 # --- 應用程式狀態管理 ---
-# 使用一個簡單的 class 來管理狀態，避免使用全域變數
 class AppState:
     def __init__(self):
         self.conversation_history = []
         self.meeting_topic = "創意激發會議"
-        # 提示詞管理
-        self.prompts = {
-            "global": "",
-            "analyst": DEFAULT_ANALYST_TEMPLATE,
-            "strategist": DEFAULT_STRATEGIST_TEMPLATE,
-            "critic": DEFAULT_CRITIC_TEMPLATE,
-        }
-        self.ollama_model_name = "llama3" # 預設模型
+        self.roles = [
+            {"name": "文件分析師", "provider": "Ollama", "model_name": "llama3", "api_key": "", "prompt": DEFAULT_ANALYST_TEMPLATE},
+            {"name": "創意策略師", "provider": "Ollama", "model_name": "llama3", "api_key": "", "prompt": DEFAULT_STRATEGIST_TEMPLATE},
+            {"name": "批判性思考者", "provider": "Ollama", "model_name": "llama3", "api_key": "", "prompt": DEFAULT_CRITIC_TEMPLATE}
+        ]
 
     def add_to_history(self, user_question: str, ai_response: dict):
         self.conversation_history.append({"user": user_question, "ai": ai_response})
@@ -27,215 +25,190 @@ class AppState:
     def format_history_for_display(self) -> str:
         display_text = ""
         for turn in self.conversation_history:
-            display_text += f"👤 使用者: {turn['user']}\n\n"
-            display_text += "🤖 AI 團隊回覆:\n"
-            display_text += f"   [分析師]: {turn['ai'].get('analysis', 'N/A')}\n"
-            display_text += f"   [策略師]: {turn['ai'].get('strategies', 'N/A')}\n"
-            display_text += f"   [批判者]: {turn['ai'].get('critique', 'N/A')}\n\n"
-            display_text += "---\n"
+            display_text += f"👤 **使用者**: {turn['user']}\n\n"
+            display_text += "🤖 **AI 團隊回覆**:\n"
+            ai_outputs = turn['ai']
+            if ai_outputs.get("error"):
+                display_text += f"   - 🔴 **錯誤**: {ai_outputs['error']}\n\n"
+            else:
+                # 動態地從 state.roles 取得角色名稱並顯示對應的輸出
+                for i, role in enumerate(state.roles):
+                    role_name = role.get("name", f"角色 {i+1}")
+                    # 根據 core_logic.py 中的輸出鍵生成規則來找到對應的輸出
+                    output_key = next((key for key in ai_outputs if key.startswith(f"output_{i+1}_")), None)
+                    if output_key:
+                        content = ai_outputs.get(output_key, "N/A")
+                        display_text += f"   - **{role_name}**: {content}\n"
+            display_text += "\n---\n"
         return display_text
 
     def reset(self):
+        # 保留角色設定，只重置會議相關的狀態
         self.conversation_history = []
         self.meeting_topic = "創意激發會議"
 
 state = AppState()
 
 # --- UI 事件處理函式 ---
-
 def update_meeting_topic(topic: str):
-    """更新會議主題"""
     state.meeting_topic = topic
     return f"主題已更新為: {topic}"
 
 def process_question(question: str, notes: str):
-    """處理使用者問題，並更新對話紀錄和筆記"""
     if not question.strip():
         return state.format_history_for_display(), notes, "問題不能為空。"
-
-    # 執行 AI 鏈，傳入模型名稱和自訂提示詞
-    ai_response = run_main_chain(question, state.ollama_model_name, state.prompts)
-
-    # 更新歷史紀錄
+    ai_response = run_main_chain(question, state.roles)
     state.add_to_history(question, ai_response)
-
-    # 返回更新後的 UI 內容
     return state.format_history_for_display(), notes, f"'{question[:20]}...' 已處理完成。"
 
 def export_session(notes: str):
-    """將完整的會議內容 (對話+筆記) 匯出到單一 JSON 檔案。"""
     if not state.conversation_history and not notes.strip():
         return gr.update(visible=False), "沒有任何內容可匯出。"
-
-    content = {
-        "meeting_topic": state.meeting_topic,
-        "export_time": datetime.now().isoformat(),
-        "history": state.conversation_history,
-        "notes": notes,
-    }
+    content = {"meeting_topic": state.meeting_topic, "export_time": datetime.now().isoformat(), "history": state.conversation_history, "notes": notes}
     filepath = save_to_json(state.meeting_topic, content, "session")
-
-    if filepath:
-        return gr.update(value=filepath, visible=True), f"會議已匯出至: {filepath}"
-    return gr.update(visible=False), "會議匯出失敗。"
+    return (gr.update(value=filepath, visible=True), f"會議已匯出至: {filepath}") if filepath else (gr.update(visible=False), "會議匯出失敗。")
 
 def end_meeting(notes: str):
-    """結束會議並匯出所有內容"""
     _, export_status = export_session(notes)
-
-    # 重置狀態
     state.reset()
-
-    return "", "", f"會議結束。\n{export_status}\n\n應用程式已重置，可以開始新會議。"
+    # 返回 topic 的初始值，以更新 UI
+    return "", "創意激發會議", f"會議結束。\n{export_status}\n\n應用程式已重置。"
 
 def restore_session(file_obj):
-    """從上傳的 JSON 檔案還原會議狀態"""
     if file_obj is None:
         return state.meeting_topic, state.format_history_for_display(), "", "未上傳任何檔案。"
-
     data = load_from_json(file_obj.name)
     if not data:
         return state.meeting_topic, state.format_history_for_display(), "", f"無法讀取或解析檔案: {file_obj.name}"
+    state.meeting_topic = data.get("meeting_topic", "無標題")
+    state.conversation_history = data.get("history", [])
+    notes = data.get("notes", "")
+    return state.meeting_topic, state.format_history_for_display(), notes, "會議紀錄已成功還原。"
 
-    try:
-        # 還原狀態
-        state.meeting_topic = data.get("meeting_topic", "無標題")
-        state.conversation_history = data.get("history", [])
-        notes = data.get("notes", "") # 假設筆記也可能在同一個檔案中
-
-        # 更新 UI
-        return state.meeting_topic, state.format_history_for_display(), notes, "會議紀錄已成功還原。"
-    except KeyError as e:
-        return state.meeting_topic, state.format_history_for_display(), "", f"檔案格式不符，缺少鍵: {e}"
+def update_preview(text):
+    return text
 
 def toggle_settings(is_open):
     return gr.update(open=not is_open)
 
-def save_prompts(model_name, global_prompt, analyst_prompt, strategist_prompt, critic_prompt):
-    """儲存所有設定，包括模型名稱和提示詞。"""
-    state.ollama_model_name = model_name
-    state.prompts["global"] = global_prompt
-    state.prompts["analyst"] = analyst_prompt
-    state.prompts["strategist"] = strategist_prompt
-    state.prompts["critic"] = critic_prompt
-    return "設定已成功儲存於本次會話。"
+def save_roles(*args):
+    num_roles = len(state.roles)
+    for i in range(num_roles):
+        state.roles[i]["name"] = args[i * 5]
+        state.roles[i]["provider"] = args[i * 5 + 1]
+        state.roles[i]["model_name"] = args[i * 5 + 2]
+        state.roles[i]["api_key"] = args[i * 5 + 3]
+        state.roles[i]["prompt"] = args[i * 5 + 4]
+    return "團隊設定已成功儲存於本次會話。"
 
-def export_prompts():
-    """將包含模型名稱的完整提示詞組態匯出。"""
-    # 建立一個包含模型名稱和提示詞的字典
-    config_to_export = {
-        "ollama_model_name": state.ollama_model_name,
-        "prompts": state.prompts
-    }
-    filepath = save_prompts_to_json(config_to_export)
-    if filepath:
-        return gr.update(value=filepath, visible=True), "提示詞組態已匯出。"
-    return gr.update(visible=False), "提示詞組態匯出失敗。"
+def export_roles():
+    # 將 'roles' 列表直接傳遞給 file_handler
+    filepath = save_to_json("InsightCascade_Team_Config", state.roles, "team_config")
+    return (gr.update(value=filepath, visible=True), "團隊設定已匯出。") if filepath else (gr.update(visible=False), "團隊設定匯出失敗。")
 
-def import_prompts(file_obj):
-    """從上傳的 JSON 檔案匯入包含模型名稱的提示詞組態。"""
+def import_roles(file_obj):
     if file_obj is None:
-        return "未上傳任何檔案。", state.ollama_model_name, state.prompts["global"], state.prompts["analyst"], state.prompts["strategist"], state.prompts["critic"]
+        # 返回當前值的更新，以避免清空介面
+        current_values = []
+        for role in state.roles:
+            current_values.extend([role["name"], role["provider"], role["model_name"], role["api_key"], role["prompt"]])
+        return "未上傳任何檔案。", *current_values
 
-    data = load_from_json(file_obj.name)
-    if not data:
-        return f"無法讀取或解析檔案: {file_obj.name}", state.ollama_model_name, state.prompts["global"], state.prompts["analyst"], state.prompts["strategist"], state.prompts["critic"]
+    imported_roles = load_from_json(file_obj.name)
+    if not isinstance(imported_roles, list):
+        current_values = []
+        for role in state.roles:
+            current_values.extend([role["name"], role["provider"], role["model_name"], role["api_key"], role["prompt"]])
+        return "檔案格式不正確，應為角色列表。", *current_values
 
-    # 更新狀態
-    state.ollama_model_name = data.get("ollama_model_name", state.ollama_model_name)
-
-    # 從 'prompts' 子字典中讀取提示詞
-    prompts_data = data.get("prompts", {})
-    state.prompts["global"] = prompts_data.get("global", "")
-    state.prompts["analyst"] = prompts_data.get("analyst", DEFAULT_ANALYST_TEMPLATE)
-    state.prompts["strategist"] = prompts_data.get("strategist", DEFAULT_STRATEGIST_TEMPLATE)
-    state.prompts["critic"] = prompts_data.get("critic", DEFAULT_CRITIC_TEMPLATE)
-
-    # 更新 UI
-    return "提示詞組態已成功匯入並更新。", state.ollama_model_name, state.prompts["global"], state.prompts["analyst"], state.prompts["strategist"], state.prompts["critic"]
-
-def update_preview(text):
-    """即時更新 Markdown 預覽"""
-    return text
+    state.roles = imported_roles
+    updates = []
+    for role in state.roles:
+        updates.extend([
+            gr.update(value=role["name"]),
+            gr.update(value=role["provider"]),
+            gr.update(value=role["model_name"]),
+            gr.update(value=role["api_key"]),
+            gr.update(value=role["prompt"]),
+        ])
+    return "團隊設定已成功匯入。", *updates
 
 # --- Gradio UI 佈局 ---
 with gr.Blocks(title="Insight Cascade", theme=gr.themes.Soft()) as app:
     gr.Markdown("# 🚀 Insight Cascade")
-
-    meeting_topic_textbox = gr.Textbox(
-        value=state.meeting_topic,
-        label="會議主題 (Meeting Topic)",
-        interactive=True
-    )
+    meeting_topic_textbox = gr.Textbox(value=state.meeting_topic, label="會議主題", interactive=True)
     topic_status = gr.Markdown()
 
-    # 中部工作區
     with gr.Row():
-        with gr.Column():
-            conversation_panel = gr.Textbox(
-                label="AI 對話記錄 (Conversation Panel)",
-                lines=20,
-                interactive=False
-            )
-
-        with gr.Column():
-            gr.Markdown("### 主席筆記 (Chairman's Notes)")
+        with gr.Column(scale=2):
+            conversation_panel = gr.Textbox(label="AI 對話記錄", lines=25, interactive=False)
+        with gr.Column(scale=3):
+            gr.Markdown("### 主席筆記")
             with gr.Row():
-                chairman_notes_editor = gr.Textbox(
-                    label="Markdown 輸入",
-                    show_label=False,
-                    lines=18,
-                    interactive=True,
-                    placeholder="在此用 Markdown 語法輸入筆記..."
-                )
-                chairman_notes_preview = gr.Markdown(label="即時預覽", show_label=False)
+                chairman_notes_editor = gr.Textbox(show_label=False, lines=23, interactive=True, placeholder="在此用 Markdown 語法輸入筆記...")
+                chairman_notes_preview = gr.Markdown(label="即時預覽")
 
     with gr.Row():
         export_session_button = gr.Button("匯出會議紀錄")
         session_file_output = gr.File(label="下載會議紀錄檔案", visible=False)
 
-    # 底部控制欄
     with gr.Column():
-        question_input = gr.Textbox(label="您的問題 (Your Question)", placeholder="請輸入您想探討的問題...")
+        question_input = gr.Textbox(label="您的問題", placeholder="請輸入您想探討的問題...")
         send_button = gr.Button("發送問題")
         end_meeting_button = gr.Button("結束會議並匯出全部")
 
     status_update = gr.Markdown()
 
-    # 設定區塊 (摺疊)
-    with gr.Accordion("提示詞設定 (Prompt Settings)", open=False) as settings_accordion:
-        gr.Markdown("在這裡客製化 AI 的行為。請確保您的 Ollama 服務正在本機運行。")
-        ollama_model_textbox = gr.Textbox(label="Ollama 模型名稱", value=state.ollama_model_name, interactive=True)
-        global_prompt_textbox = gr.Textbox(label="全域系統提示詞 (Global System Prompt)", lines=3)
-        with gr.Row():
-            analyst_prompt_textbox = gr.Textbox(label="文件分析師 (Analyst)", value=DEFAULT_ANALYST_TEMPLATE, lines=10)
-            strategist_prompt_textbox = gr.Textbox(label="創意策略師 (Strategist)", value=DEFAULT_STRATEGIST_TEMPLATE, lines=10)
-            critic_prompt_textbox = gr.Textbox(label="批判性思考者 (Critic)", value=DEFAULT_CRITIC_TEMPLATE, lines=10)
-        with gr.Row():
-            save_prompts_button = gr.Button("儲存提示詞")
-            export_prompts_button = gr.Button("匯出提示詞")
-            import_prompts_button = gr.UploadButton("匯入提示詞 (.json)", file_types=["json"])
+    with gr.Accordion("團隊與AI設定 (Team & AI Settings)", open=False) as settings_accordion:
+        with gr.Tabs() as role_tabs:
+            role_ui_components = []
+            all_role_inputs = []
+            for i, role in enumerate(state.roles):
+                with gr.Tab(label=f"角色 {i+1}", id=i):
+                    with gr.Row():
+                        name_input = gr.Textbox(label="角色名稱", value=role["name"])
+                        provider_input = gr.Radio(["Ollama", "Gemini"], label="AI 提供商", value=role["provider"])
+                    with gr.Group(visible=(role["provider"] == "Ollama")) as ollama_settings:
+                        model_name_input = gr.Dropdown(["llama3", "mistral", "gemma"], label="Ollama 模型", value=role["model_name"], interactive=True)
+                    with gr.Group(visible=(role["provider"] == "Gemini")) as gemini_settings:
+                        api_key_input = gr.Textbox(label="Gemini API 金鑰", value=role["api_key"], type="password", interactive=True)
+                    prompt_input = gr.Textbox(label="角色提示詞", value=role["prompt"], lines=8, interactive=True)
 
-        prompt_file_output = gr.File(label="下載提示詞檔案", visible=False)
+                    components = {"provider": provider_input, "ollama": ollama_settings, "gemini": gemini_settings}
+                    role_ui_components.append(components)
+                    all_role_inputs.extend([name_input, provider_input, model_name_input, api_key_input, prompt_input])
 
-    # 頁腳
+        with gr.Row():
+            save_roles_button = gr.Button("儲存所有角色設定")
+            export_roles_button = gr.Button("匯出團隊設定")
+            import_roles_button = gr.UploadButton("匯入團隊設定 (.json)", file_types=["json"])
+        roles_file_output = gr.File(label="下載團隊設定檔案", visible=False)
+
     with gr.Row(elem_classes=["footer"]):
         upload_button = gr.UploadButton("匯入會議紀錄 (.json)", file_types=["json"])
-        gr.HTML("<div style='flex-grow: 1'></div>") # Spacer
-        settings_button = gr.Button("⚙️ 設定", elem_classes=["version-label"])
+        gr.HTML("<div style='flex-grow: 1'></div>")
+        settings_button = gr.Button("⚙️ 團隊設定")
 
-    # --- 連接事件與函式 (正確的結構) ---
+    # --- 事件綁定 ---
     meeting_topic_textbox.submit(update_meeting_topic, inputs=meeting_topic_textbox, outputs=topic_status)
     send_button.click(process_question, inputs=[question_input, chairman_notes_editor], outputs=[conversation_panel, chairman_notes_editor, status_update])
     export_session_button.click(export_session, inputs=[chairman_notes_editor], outputs=[session_file_output, status_update])
-    end_meeting_button.click(end_meeting, inputs=[chairman_notes_editor], outputs=[conversation_panel, chairman_notes_editor, status_update]).then(lambda: "", outputs=question_input)
+    end_meeting_button.click(end_meeting, inputs=[chairman_notes_editor], outputs=[conversation_panel, meeting_topic_textbox, status_update]).then(lambda: "", outputs=question_input).then(lambda: "", outputs=chairman_notes_editor).then(lambda: "", outputs=chairman_notes_preview)
     upload_button.upload(restore_session, inputs=[upload_button], outputs=[meeting_topic_textbox, conversation_panel, chairman_notes_editor, status_update])
-    settings_button.click(toggle_settings, inputs=[settings_accordion], outputs=[settings_accordion])
-    save_prompts_button.click(save_prompts, inputs=[ollama_model_textbox, global_prompt_textbox, analyst_prompt_textbox, strategist_prompt_textbox, critic_prompt_textbox], outputs=[status_update])
-    export_prompts_button.click(export_prompts, outputs=[prompt_file_output, status_update])
-    import_prompts_button.upload(import_prompts, inputs=[import_prompts_button], outputs=[status_update, ollama_model_textbox, global_prompt_textbox, analyst_prompt_textbox, strategist_prompt_textbox, critic_prompt_textbox])
     chairman_notes_editor.change(update_preview, inputs=[chairman_notes_editor], outputs=[chairman_notes_preview])
+    settings_button.click(toggle_settings, inputs=[settings_accordion], outputs=[settings_accordion])
+
+    def toggle_provider_settings(provider):
+        is_ollama = provider == "Ollama"
+        return gr.update(visible=is_ollama), gr.update(visible=not is_ollama)
+
+    for components in role_ui_components:
+        components["provider"].change(toggle_provider_settings, inputs=components["provider"], outputs=[components["ollama"], components["gemini"]])
+
+    save_roles_button.click(save_roles, inputs=all_role_inputs, outputs=[status_update])
+    export_roles_button.click(export_roles, outputs=[roles_file_output, status_update])
+    import_roles_button.upload(import_roles, inputs=[import_roles_button], outputs=[status_update, *all_role_inputs])
 
 # --- 啟動應用程式 ---
 if __name__ == "__main__":
-    app.launch()
+    app.launch(debug=True)
