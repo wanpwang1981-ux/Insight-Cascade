@@ -172,12 +172,16 @@ with gr.Blocks(title="Insight Cascade", theme=gr.themes.Soft()) as app:
             export_conv_button = gr.Button("匯出對話紀錄")
 
         with gr.Column():
-            chairman_notes = gr.Textbox(
-                label="主席筆記 (Chairman's Notes)",
-                lines=20,
-                interactive=True,
-                placeholder="在此輸入您的想法、決策和行動項目..."
-            )
+            gr.Markdown("### 主席筆記 (Chairman's Notes)")
+            with gr.Row():
+                chairman_notes_editor = gr.Textbox(
+                    label="Markdown 輸入",
+                    show_label=False,
+                    lines=18,
+                    interactive=True,
+                    placeholder="在此用 Markdown 語法輸入筆記..."
+                )
+                chairman_notes_preview = gr.Markdown(label="即時預覽", show_label=False)
             export_notes_button = gr.Button("匯出主席筆記")
 
     # 底部控制欄
@@ -214,23 +218,23 @@ with gr.Blocks(title="Insight Cascade", theme=gr.themes.Soft()) as app:
 
     send_button.click(
         process_question,
-        inputs=[question_input, chairman_notes],
-        outputs=[conversation_panel, chairman_notes, status_update]
+        inputs=[question_input, chairman_notes_editor],
+        outputs=[conversation_panel, chairman_notes_editor, status_update]
     )
 
     export_conv_button.click(export_conversation, outputs=status_update)
-    export_notes_button.click(export_notes, inputs=chairman_notes, outputs=status_update)
+    export_notes_button.click(export_notes, inputs=chairman_notes_editor, outputs=status_update)
 
     end_meeting_button.click(
         end_meeting,
-        inputs=[chairman_notes],
-        outputs=[conversation_panel, chairman_notes, status_update]
+        inputs=[chairman_notes_editor],
+        outputs=[conversation_panel, chairman_notes_editor, status_update]
     ).then(lambda: "", outputs=question_input) # 清空問題輸入框
 
     upload_button.upload(
         restore_session,
         inputs=[upload_button],
-        outputs=[meeting_topic_textbox, conversation_panel, chairman_notes, status_update]
+        outputs=[meeting_topic_textbox, conversation_panel, chairman_notes_editor, status_update]
     )
 
     settings_button.click(
@@ -254,6 +258,16 @@ with gr.Blocks(title="Insight Cascade", theme=gr.themes.Soft()) as app:
         import_prompts,
         inputs=[import_prompts_button],
         outputs=[status_update, global_prompt_textbox, analyst_prompt_textbox, strategist_prompt_textbox, critic_prompt_textbox]
+    )
+
+    # Markdown 筆記即時預覽
+    def update_preview(text):
+        return text
+
+    chairman_notes_editor.change(
+        update_preview,
+        inputs=[chairman_notes_editor],
+        outputs=[chairman_notes_preview]
     )
 
 # --- 啟動應用程式 ---
