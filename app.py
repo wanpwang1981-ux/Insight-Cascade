@@ -61,41 +61,31 @@ def process_question(question: str, notes: str):
     # 返回更新後的 UI 內容
     return state.format_history_for_display(), notes, f"'{question[:20]}...' 已處理完成。"
 
-def export_conversation():
-    """匯出對話紀錄"""
-    if not state.conversation_history:
-        return "對話紀錄為空，無法匯出。"
+def export_session(notes: str):
+    """將完整的會議內容 (對話+筆記) 匯出到單一 JSON 檔案。"""
+    if not state.conversation_history and not notes.strip():
+        return gr.update(visible=False), "沒有任何內容可匯出。"
 
     content = {
         "meeting_topic": state.meeting_topic,
         "export_time": datetime.now().isoformat(),
-        "history": state.conversation_history
+        "history": state.conversation_history,
+        "notes": notes,
     }
-    filepath = save_to_json(state.meeting_topic, content, "conversation")
-    return f"對話紀錄已匯出至: {filepath}" if filepath else "匯出失敗。"
+    filepath = save_to_json(state.meeting_topic, content, "session")
 
-def export_notes(notes: str):
-    """匯出主席筆記"""
-    if not notes.strip():
-        return "筆記為空，無法匯出。"
-
-    content = {
-        "meeting_topic": state.meeting_topic,
-        "export_time": datetime.now().isoformat(),
-        "notes": notes
-    }
-    filepath = save_to_json(state.meeting_topic, content, "notes")
-    return f"主席筆記已匯出至: {filepath}" if filepath else "匯出失敗。"
+    if filepath:
+        return gr.update(value=filepath, visible=True), f"會議已匯出至: {filepath}"
+    return gr.update(visible=False), "會議匯出失敗。"
 
 def end_meeting(notes: str):
     """結束會議並匯出所有內容"""
-    conv_msg = export_conversation()
-    notes_msg = export_notes(notes)
+    _, export_status = export_session(notes)
 
     # 重置狀態
     state.reset()
 
-    return "", "", f"會議結束。\n{conv_msg}\n{notes_msg}\n\n應用程式已重置，可以開始新會議。"
+    return "", "", f"會議結束。\n{export_status}\n\n應用程式已重置，可以開始新會議。"
 
 def restore_session(file_obj):
     """從上傳的 JSON 檔案還原會議狀態"""
@@ -150,6 +140,10 @@ def import_prompts(file_obj):
     # 更新 UI
     return "提示詞已成功匯入並更新。", state.prompts["global"], state.prompts["analyst"], state.prompts["strategist"], state.prompts["critic"]
 
+def update_preview(text):
+    """即時更新 Markdown 預覽"""
+    return text
+
 # --- Gradio UI 佈局 ---
 with gr.Blocks(title="Insight Cascade", theme=gr.themes.Soft()) as app:
     gr.Markdown("# 🚀 Insight Cascade")
@@ -169,7 +163,6 @@ with gr.Blocks(title="Insight Cascade", theme=gr.themes.Soft()) as app:
                 lines=20,
                 interactive=False
             )
-            export_conv_button = gr.Button("匯出對話紀錄")
 
         with gr.Column():
             gr.Markdown("### 主席筆記 (Chairman's Notes)")
@@ -182,7 +175,10 @@ with gr.Blocks(title="Insight Cascade", theme=gr.themes.Soft()) as app:
                     placeholder="在此用 Markdown 語法輸入筆記..."
                 )
                 chairman_notes_preview = gr.Markdown(label="即時預覽", show_label=False)
-            export_notes_button = gr.Button("匯出主席筆記")
+
+    with gr.Row():
+        export_session_button = gr.Button("匯出會議紀錄")
+        session_file_output = gr.File(label="下載會議紀錄檔案", visible=False)
 
     # 底部控制欄
     with gr.Column():
@@ -213,62 +209,17 @@ with gr.Blocks(title="Insight Cascade", theme=gr.themes.Soft()) as app:
         gr.HTML("<div style='flex-grow: 1'></div>") # Spacer
         settings_button = gr.Button("⚙️ 設定", elem_classes=["version-label"])
 
-    # --- 連接事件與函式 ---
+    # --- 連接事件與函式 (正確的結構) ---
     meeting_topic_textbox.submit(update_meeting_topic, inputs=meeting_topic_textbox, outputs=topic_status)
-
-    send_button.click(
-        process_question,
-        inputs=[question_input, chairman_notes_editor],
-        outputs=[conversation_panel, chairman_notes_editor, status_update]
-    )
-
-    export_conv_button.click(export_conversation, outputs=status_update)
-    export_notes_button.click(export_notes, inputs=chairman_notes_editor, outputs=status_update)
-
-    end_meeting_button.click(
-        end_meeting,
-        inputs=[chairman_notes_editor],
-        outputs=[conversation_panel, chairman_notes_editor, status_update]
-    ).then(lambda: "", outputs=question_input) # 清空問題輸入框
-
-    upload_button.upload(
-        restore_session,
-        inputs=[upload_button],
-        outputs=[meeting_topic_textbox, conversation_panel, chairman_notes_editor, status_update]
-    )
-
-    settings_button.click(
-        toggle_settings,
-        inputs=[settings_accordion],
-        outputs=[settings_accordion]
-    )
-
-    save_prompts_button.click(
-        save_prompts,
-        inputs=[global_prompt_textbox, analyst_prompt_textbox, strategist_prompt_textbox, critic_prompt_textbox],
-        outputs=[status_update]
-    )
-
-    export_prompts_button.click(
-        export_prompts,
-        outputs=[prompt_file_output, status_update]
-    )
-
-    import_prompts_button.upload(
-        import_prompts,
-        inputs=[import_prompts_button],
-        outputs=[status_update, global_prompt_textbox, analyst_prompt_textbox, strategist_prompt_textbox, critic_prompt_textbox]
-    )
-
-    # Markdown 筆記即時預覽
-    def update_preview(text):
-        return text
-
-    chairman_notes_editor.change(
-        update_preview,
-        inputs=[chairman_notes_editor],
-        outputs=[chairman_notes_preview]
-    )
+    send_button.click(process_question, inputs=[question_input, chairman_notes_editor], outputs=[conversation_panel, chairman_notes_editor, status_update])
+    export_session_button.click(export_session, inputs=[chairman_notes_editor], outputs=[session_file_output, status_update])
+    end_meeting_button.click(end_meeting, inputs=[chairman_notes_editor], outputs=[conversation_panel, chairman_notes_editor, status_update]).then(lambda: "", outputs=question_input)
+    upload_button.upload(restore_session, inputs=[upload_button], outputs=[meeting_topic_textbox, conversation_panel, chairman_notes_editor, status_update])
+    settings_button.click(toggle_settings, inputs=[settings_accordion], outputs=[settings_accordion])
+    save_prompts_button.click(save_prompts, inputs=[global_prompt_textbox, analyst_prompt_textbox, strategist_prompt_textbox, critic_prompt_textbox], outputs=[status_update])
+    export_prompts_button.click(export_prompts, outputs=[prompt_file_output, status_update])
+    import_prompts_button.upload(import_prompts, inputs=[import_prompts_button], outputs=[status_update, global_prompt_textbox, analyst_prompt_textbox, strategist_prompt_textbox, critic_prompt_textbox])
+    chairman_notes_editor.change(update_preview, inputs=[chairman_notes_editor], outputs=[chairman_notes_preview])
 
 # --- 啟動應用程式 ---
 if __name__ == "__main__":
