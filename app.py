@@ -19,6 +19,7 @@ class AppState:
             "strategist": DEFAULT_STRATEGIST_TEMPLATE,
             "critic": DEFAULT_CRITIC_TEMPLATE,
         }
+        self.ollama_model_name = "llama3" # 預設模型
 
     def add_to_history(self, user_question: str, ai_response: dict):
         self.conversation_history.append({"user": user_question, "ai": ai_response})
@@ -52,8 +53,8 @@ def process_question(question: str, notes: str):
     if not question.strip():
         return state.format_history_for_display(), notes, "問題不能為空。"
 
-    # 執行 AI 鏈，傳入自訂提示詞
-    ai_response = run_main_chain(question, state.prompts)
+    # 執行 AI 鏈，傳入模型名稱和自訂提示詞
+    ai_response = run_main_chain(question, state.ollama_model_name, state.prompts)
 
     # 更新歷史紀錄
     state.add_to_history(question, ai_response)
@@ -110,35 +111,48 @@ def restore_session(file_obj):
 def toggle_settings(is_open):
     return gr.update(open=not is_open)
 
-def save_prompts(global_prompt, analyst_prompt, strategist_prompt, critic_prompt):
+def save_prompts(model_name, global_prompt, analyst_prompt, strategist_prompt, critic_prompt):
+    """儲存所有設定，包括模型名稱和提示詞。"""
+    state.ollama_model_name = model_name
     state.prompts["global"] = global_prompt
     state.prompts["analyst"] = analyst_prompt
     state.prompts["strategist"] = strategist_prompt
     state.prompts["critic"] = critic_prompt
-    return "提示詞已成功儲存於本次會話。"
+    return "設定已成功儲存於本次會話。"
 
 def export_prompts():
-    filepath = save_prompts_to_json(state.prompts)
+    """將包含模型名稱的完整提示詞組態匯出。"""
+    # 建立一個包含模型名稱和提示詞的字典
+    config_to_export = {
+        "ollama_model_name": state.ollama_model_name,
+        "prompts": state.prompts
+    }
+    filepath = save_prompts_to_json(config_to_export)
     if filepath:
-        return gr.update(value=filepath, visible=True), "提示詞已匯出。"
-    return gr.update(visible=False), "提示詞匯出失敗。"
+        return gr.update(value=filepath, visible=True), "提示詞組態已匯出。"
+    return gr.update(visible=False), "提示詞組態匯出失敗。"
 
 def import_prompts(file_obj):
+    """從上傳的 JSON 檔案匯入包含模型名稱的提示詞組態。"""
     if file_obj is None:
-        return "未上傳任何檔案。", "", "", "", ""
+        return "未上傳任何檔案。", state.ollama_model_name, state.prompts["global"], state.prompts["analyst"], state.prompts["strategist"], state.prompts["critic"]
 
     data = load_from_json(file_obj.name)
     if not data:
-        return f"無法讀取或解析檔案: {file_obj.name}", state.prompts["global"], state.prompts["analyst"], state.prompts["strategist"], state.prompts["critic"]
+        return f"無法讀取或解析檔案: {file_obj.name}", state.ollama_model_name, state.prompts["global"], state.prompts["analyst"], state.prompts["strategist"], state.prompts["critic"]
 
     # 更新狀態
-    state.prompts["global"] = data.get("global", "")
-    state.prompts["analyst"] = data.get("analyst", DEFAULT_ANALYST_TEMPLATE)
-    state.prompts["strategist"] = data.get("strategist", DEFAULT_STRATEGIST_TEMPLATE)
-    state.prompts["critic"] = data.get("critic", DEFAULT_CRITIC_TEMPLATE)
+    state.ollama_model_name = data.get("ollama_model_name", state.ollama_model_name)
+
+    # 從 'prompts' 子字典中讀取提示詞
+    prompts_data = data.get("prompts", {})
+    state.prompts["global"] = prompts_data.get("global", "")
+    state.prompts["analyst"] = prompts_data.get("analyst", DEFAULT_ANALYST_TEMPLATE)
+    state.prompts["strategist"] = prompts_data.get("strategist", DEFAULT_STRATEGIST_TEMPLATE)
+    state.prompts["critic"] = prompts_data.get("critic", DEFAULT_CRITIC_TEMPLATE)
 
     # 更新 UI
-    return "提示詞已成功匯入並更新。", state.prompts["global"], state.prompts["analyst"], state.prompts["strategist"], state.prompts["critic"]
+    return "提示詞組態已成功匯入並更新。", state.ollama_model_name, state.prompts["global"], state.prompts["analyst"], state.prompts["strategist"], state.prompts["critic"]
 
 def update_preview(text):
     """即時更新 Markdown 預覽"""
@@ -190,7 +204,8 @@ with gr.Blocks(title="Insight Cascade", theme=gr.themes.Soft()) as app:
 
     # 設定區塊 (摺疊)
     with gr.Accordion("提示詞設定 (Prompt Settings)", open=False) as settings_accordion:
-        gr.Markdown("在這裡客製化 AI 的行為。")
+        gr.Markdown("在這裡客製化 AI 的行為。請確保您的 Ollama 服務正在本機運行。")
+        ollama_model_textbox = gr.Textbox(label="Ollama 模型名稱", value=state.ollama_model_name, interactive=True)
         global_prompt_textbox = gr.Textbox(label="全域系統提示詞 (Global System Prompt)", lines=3)
         with gr.Row():
             analyst_prompt_textbox = gr.Textbox(label="文件分析師 (Analyst)", value=DEFAULT_ANALYST_TEMPLATE, lines=10)
@@ -216,9 +231,9 @@ with gr.Blocks(title="Insight Cascade", theme=gr.themes.Soft()) as app:
     end_meeting_button.click(end_meeting, inputs=[chairman_notes_editor], outputs=[conversation_panel, chairman_notes_editor, status_update]).then(lambda: "", outputs=question_input)
     upload_button.upload(restore_session, inputs=[upload_button], outputs=[meeting_topic_textbox, conversation_panel, chairman_notes_editor, status_update])
     settings_button.click(toggle_settings, inputs=[settings_accordion], outputs=[settings_accordion])
-    save_prompts_button.click(save_prompts, inputs=[global_prompt_textbox, analyst_prompt_textbox, strategist_prompt_textbox, critic_prompt_textbox], outputs=[status_update])
+    save_prompts_button.click(save_prompts, inputs=[ollama_model_textbox, global_prompt_textbox, analyst_prompt_textbox, strategist_prompt_textbox, critic_prompt_textbox], outputs=[status_update])
     export_prompts_button.click(export_prompts, outputs=[prompt_file_output, status_update])
-    import_prompts_button.upload(import_prompts, inputs=[import_prompts_button], outputs=[status_update, global_prompt_textbox, analyst_prompt_textbox, strategist_prompt_textbox, critic_prompt_textbox])
+    import_prompts_button.upload(import_prompts, inputs=[import_prompts_button], outputs=[status_update, ollama_model_textbox, global_prompt_textbox, analyst_prompt_textbox, strategist_prompt_textbox, critic_prompt_textbox])
     chairman_notes_editor.change(update_preview, inputs=[chairman_notes_editor], outputs=[chairman_notes_preview])
 
 # --- 啟動應用程式 ---

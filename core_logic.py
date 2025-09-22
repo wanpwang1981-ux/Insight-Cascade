@@ -1,11 +1,7 @@
 import os
-from langchain_openai import ChatOpenAI
+from langchain_community.llms import Ollama
 from langchain.prompts import PromptTemplate
 from langchain.chains import LLMChain, SequentialChain
-from dotenv import load_dotenv
-
-# 載入環境變數 (例如 OPENAI_API_KEY)
-load_dotenv()
 
 # --- 預設提示詞模板 ---
 DEFAULT_ANALYST_TEMPLATE = """
@@ -44,30 +40,21 @@ DEFAULT_CRITIC_TEMPLATE = """
 ...
 """
 
-def run_main_chain(question: str, custom_prompts: dict) -> dict:
+def run_main_chain(question: str, model_name: str, custom_prompts: dict) -> dict:
     """
-    執行主要的 AI 對話鏈。
-    如果未設定 OPENAI_API_KEY，則返回模擬回應。
-    否則，使用提供的提示詞動態建立並執行 LangChain。
+    使用 Ollama 執行主要的 AI 對話鏈。
 
     Args:
         question (str): 使用者提出的問題。
+        model_name (str): 要使用的 Ollama 模型名稱。
         custom_prompts (dict): 包含 'analyst', 'strategist', 'critic' 提示詞的字典。
 
     Returns:
-        dict: 包含所有 AI 專家產出的字典。
+        dict: 包含所有 AI 專家產出的字典，或在出錯時返回錯誤訊息。
     """
-    if not os.getenv("OPENAI_API_KEY"):
-        # 在沒有 API Key 的情況下返回一個模擬的回應，方便前端測試
-        return {
-            "analysis": "模擬分析：問題的關鍵在於提升使用者參與度。",
-            "strategies": "模擬策略：1. 遊戲化 2. 社群功能 3. 個人化推薦。",
-            "critique": "模擬批判：遊戲化成本高，社群功能需要長時間經營，個人化推薦是最佳起點。"
-        }
-
     try:
         # --- 動態初始化 LLM 和 Chains ---
-        llm = ChatOpenAI(temperature=0.7, model_name="gpt-3.5-turbo")
+        llm = Ollama(model=model_name)
 
         # 結合全域提示詞與分析師提示詞
         global_prompt = custom_prompts.get("global", "")
@@ -107,12 +94,22 @@ if __name__ == '__main__':
     print("執行 core_logic.py 單元測試...")
     test_question = "如何提升我們 App 在下一季的用戶留存率？"
 
-    # 檢查 API Key 是否存在
-    if not os.getenv("OPENAI_API_KEY"):
-        print("警告: 未找到 OPENAI_API_KEY 環境變數。將使用模擬回應。")
-        print("若要進行真實測試，請在 .env 檔案中設定 OPENAI_API_KEY=your_key")
+    # 準備預設的提示詞進行測試
+    mock_prompts = {
+        "global": "這是一個測試。",
+        "analyst": DEFAULT_ANALYST_TEMPLATE,
+        "strategist": DEFAULT_STRATEGIST_TEMPLATE,
+        "critic": DEFAULT_CRITIC_TEMPLATE,
+    }
 
-    output = run_main_chain(test_question)
+    print("\n--- 警告 ---")
+    print("此測試會嘗試連接您在本地運行的 Ollama 服務。")
+    print("請確保 Ollama 已安裝並正在運行，且模型 'llama3' 已拉取。")
+    print("若要更改測試模型，請修改此腳本中的 'test_model' 變數。")
+    print("--------------")
+
+    test_model = "llama3"
+    output = run_main_chain(test_question, test_model, mock_prompts)
 
     print("\n--- 測試輸入 ---")
     print(f"問題: {test_question}")
