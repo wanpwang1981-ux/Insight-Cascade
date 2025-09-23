@@ -14,6 +14,7 @@ class AppState:
     def __init__(self):
         self.conversation_history = []
         self.meeting_topic = "創意激發會議"
+        self.settings_open = False
         self.roles = [
             {"name": "文件分析師", "provider": "Ollama", "model_name": "llama3", "api_key": "", "prompt": DEFAULT_ANALYST_TEMPLATE},
             {"name": "創意策略師", "provider": "Ollama", "model_name": "llama3", "api_key": "", "prompt": DEFAULT_STRATEGIST_TEMPLATE},
@@ -44,6 +45,7 @@ class AppState:
     def reset(self):
         self.conversation_history = []
         self.meeting_topic = "創意激發會議"
+        self.settings_open = False
 
 state = AppState()
 
@@ -95,7 +97,9 @@ def restore_session(file_obj):
     return state.meeting_topic, state.format_history_for_display(), notes, "會議紀錄已成功還原。"
 
 def update_preview(text): return text
-def toggle_settings(is_open): return gr.update(open=not is_open)
+def toggle_settings():
+    state.settings_open = not state.settings_open
+    return gr.update(open=state.settings_open)
 
 def save_roles(*args):
     num_roles = len(state.roles)
@@ -187,7 +191,7 @@ with gr.Blocks(title="Insight Cascade", theme=gr.themes.Soft()) as app:
     end_meeting_button.click(end_meeting, inputs=[chairman_notes_editor], outputs=[conversation_panel, chairman_notes_editor, meeting_topic_textbox, status_update]).then(lambda: "", outputs=question_input).then(lambda: "", outputs=chairman_notes_preview)
     upload_button.upload(restore_session, inputs=[upload_button], outputs=[meeting_topic_textbox, conversation_panel, chairman_notes_editor, status_update])
     chairman_notes_editor.change(update_preview, inputs=chairman_notes_editor, outputs=[chairman_notes_preview])
-    settings_button.click(toggle_settings, inputs=[settings_accordion], outputs=[settings_accordion])
+    settings_button.click(toggle_settings, inputs=None, outputs=[settings_accordion])
 
     def toggle_provider_settings(provider):
         is_ollama = provider == "Ollama"
