@@ -31,19 +31,16 @@ class AppState:
             if ai_outputs.get("error"):
                 display_text += f"   - 🔴 **錯誤**: {ai_outputs['error']}\n\n"
             else:
-                # 動態地從 state.roles 取得角色名稱並顯示對應的輸出
-                for i, role in enumerate(state.roles):
+                for i, role in enumerate(self.roles):
                     role_name = role.get("name", f"角色 {i+1}")
-                    # 根據 core_logic.py 中的輸出鍵生成規則來找到對應的輸出
-                    output_key = next((key for key in ai_outputs if key.startswith(f"output_{i+1}_")), None)
-                    if output_key:
-                        content = ai_outputs.get(output_key, "N/A")
+                    chain_keys = ["analysis", "strategies", "critique"]
+                    if i < len(chain_keys):
+                        content = ai_outputs.get(chain_keys[i], "N/A")
                         display_text += f"   - **{role_name}**: {content}\n"
             display_text += "\n---\n"
         return display_text
 
     def reset(self):
-        # 保留角色設定，只重置會議相關的狀態
         self.conversation_history = []
         self.meeting_topic = "創意激發會議"
 
@@ -71,8 +68,7 @@ def export_session(notes: str):
 def end_meeting(notes: str):
     _, export_status = export_session(notes)
     state.reset()
-    # 返回 topic 的初始值，以更新 UI
-    return "", "創意激發會議", f"會議結束。\n{export_status}\n\n應用程式已重置。"
+    return "", "", "創意激發會議", f"會議結束。\n{export_status}\n\n應用程式已重置。"
 
 def restore_session(file_obj):
     if file_obj is None:
@@ -93,6 +89,7 @@ def toggle_settings(is_open):
 
 def save_roles(*args):
     num_roles = len(state.roles)
+    # Each role has 5 UI components
     for i in range(num_roles):
         state.roles[i]["name"] = args[i * 5]
         state.roles[i]["provider"] = args[i * 5 + 1]
@@ -102,34 +99,29 @@ def save_roles(*args):
     return "團隊設定已成功儲存於本次會話。"
 
 def export_roles():
-    # 將 'roles' 列表直接傳遞給 file_handler
     filepath = save_to_json("InsightCascade_Team_Config", state.roles, "team_config")
     return (gr.update(value=filepath, visible=True), "團隊設定已匯出。") if filepath else (gr.update(visible=False), "團隊設定匯出失敗。")
 
 def import_roles(file_obj):
     if file_obj is None:
-        # 返回當前值的更新，以避免清空介面
-        current_values = []
-        for role in state.roles:
-            current_values.extend([role["name"], role["provider"], role["model_name"], role["api_key"], role["prompt"]])
-        return "未上傳任何檔案。", *current_values
+        return "未上傳任何檔案。", *[gr.update() for _ in range(len(state.roles) * 7)] # 5 inputs + 2 groups
 
     imported_roles = load_from_json(file_obj.name)
     if not isinstance(imported_roles, list):
-        current_values = []
-        for role in state.roles:
-            current_values.extend([role["name"], role["provider"], role["model_name"], role["api_key"], role["prompt"]])
-        return "檔案格式不正確，應為角色列表。", *current_values
+        return "檔案格式不正確，應為角色列表。", *[gr.update() for _ in range(len(state.roles) * 7)]
 
     state.roles = imported_roles
     updates = []
     for role in state.roles:
+        is_ollama = role.get("provider") == "Ollama"
         updates.extend([
-            gr.update(value=role["name"]),
-            gr.update(value=role["provider"]),
-            gr.update(value=role["model_name"]),
-            gr.update(value=role["api_key"]),
-            gr.update(value=role["prompt"]),
+            gr.update(value=role.get("name", "")),
+            gr.update(value=role.get("provider", "Ollama")),
+            gr.update(value=role.get("model_name", "llama3")),
+            gr.update(value=role.get("api_key", "")),
+            gr.update(value=role.get("prompt", "")),
+            gr.update(visible=is_ollama),
+            gr.update(visible=not is_ollama)
         ])
     return "團隊設定已成功匯入。", *updates
 
@@ -163,20 +155,20 @@ with gr.Blocks(title="Insight Cascade", theme=gr.themes.Soft()) as app:
         with gr.Tabs() as role_tabs:
             role_ui_components = []
             all_role_inputs = []
+            all_role_outputs = []
             for i, role in enumerate(state.roles):
                 with gr.Tab(label=f"角色 {i+1}", id=i):
-                    with gr.Row():
-                        name_input = gr.Textbox(label="角色名稱", value=role["name"])
-                        provider_input = gr.Radio(["Ollama", "Gemini"], label="AI 提供商", value=role["provider"])
+                    name_input = gr.Textbox(label="角色名稱", value=role["name"])
+                    provider_input = gr.Radio(["Ollama", "Gemini"], label="AI 提供商", value=role["provider"])
                     with gr.Group(visible=(role["provider"] == "Ollama")) as ollama_settings:
                         model_name_input = gr.Dropdown(["llama3", "mistral", "gemma"], label="Ollama 模型", value=role["model_name"], interactive=True)
                     with gr.Group(visible=(role["provider"] == "Gemini")) as gemini_settings:
                         api_key_input = gr.Textbox(label="Gemini API 金鑰", value=role["api_key"], type="password", interactive=True)
                     prompt_input = gr.Textbox(label="角色提示詞", value=role["prompt"], lines=8, interactive=True)
 
-                    components = {"provider": provider_input, "ollama": ollama_settings, "gemini": gemini_settings}
-                    role_ui_components.append(components)
+                    role_ui_components.append({"provider": provider_input, "ollama": ollama_settings, "gemini": gemini_settings})
                     all_role_inputs.extend([name_input, provider_input, model_name_input, api_key_input, prompt_input])
+                    all_role_outputs.extend([name_input, provider_input, model_name_input, api_key_input, prompt_input, ollama_settings, gemini_settings])
 
         with gr.Row():
             save_roles_button = gr.Button("儲存所有角色設定")
@@ -193,7 +185,7 @@ with gr.Blocks(title="Insight Cascade", theme=gr.themes.Soft()) as app:
     meeting_topic_textbox.submit(update_meeting_topic, inputs=meeting_topic_textbox, outputs=topic_status)
     send_button.click(process_question, inputs=[question_input, chairman_notes_editor], outputs=[conversation_panel, chairman_notes_editor, status_update])
     export_session_button.click(export_session, inputs=[chairman_notes_editor], outputs=[session_file_output, status_update])
-    end_meeting_button.click(end_meeting, inputs=[chairman_notes_editor], outputs=[conversation_panel, meeting_topic_textbox, status_update]).then(lambda: "", outputs=question_input).then(lambda: "", outputs=chairman_notes_editor).then(lambda: "", outputs=chairman_notes_preview)
+    end_meeting_button.click(end_meeting, inputs=[chairman_notes_editor], outputs=[conversation_panel, chairman_notes_editor, meeting_topic_textbox, status_update]).then(lambda: "", outputs=question_input).then(lambda: "", outputs=chairman_notes_preview)
     upload_button.upload(restore_session, inputs=[upload_button], outputs=[meeting_topic_textbox, conversation_panel, chairman_notes_editor, status_update])
     chairman_notes_editor.change(update_preview, inputs=[chairman_notes_editor], outputs=[chairman_notes_preview])
     settings_button.click(toggle_settings, inputs=[settings_accordion], outputs=[settings_accordion])
@@ -207,7 +199,7 @@ with gr.Blocks(title="Insight Cascade", theme=gr.themes.Soft()) as app:
 
     save_roles_button.click(save_roles, inputs=all_role_inputs, outputs=[status_update])
     export_roles_button.click(export_roles, outputs=[roles_file_output, status_update])
-    import_roles_button.upload(import_roles, inputs=[import_roles_button], outputs=[status_update, *all_role_inputs])
+    import_roles_button.upload(import_roles, inputs=[import_roles_button], outputs=[status_update, *all_role_outputs])
 
 # --- 啟動應用程式 ---
 if __name__ == "__main__":
