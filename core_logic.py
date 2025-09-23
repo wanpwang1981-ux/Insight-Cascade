@@ -125,3 +125,18 @@ if __name__ == '__main__':
             print("\n測試失敗：缺少部分輸出鍵。")
 
     print("\n單元測試結束。")
+
+def test_gemini_api_key(api_key: str) -> str:
+    """
+    測試給定的 Gemini API 金鑰是否有效。
+    """
+    if not api_key:
+        return "❌ 錯誤：API 金鑰不能為空。"
+    try:
+        llm = ChatGoogleGenerativeAI(model="gemini-pro", google_api_key=api_key)
+        # 嘗試一個非常簡單的操作來觸發驗證，例如獲取模型資訊
+        llm.get_num_tokens("test")
+        return "✅ 金鑰驗證成功！"
+    except Exception as e:
+        # 捕獲所有可能的錯誤，包括認證失敗、網路問題等
+        return f"❌ 金鑰驗證失敗: {str(e)}"
