@@ -55,13 +55,11 @@ def update_meeting_topic(topic: str):
     return f"主題已更新為: {topic}"
 
 def get_ollama_models():
-    """呼叫本地 Ollama API 來取得可用的模型列表。"""
     try:
         response = requests.get("http://localhost:11434/api/tags")
         response.raise_for_status()
         models = response.json().get("models", [])
         model_names = [m["name"] for m in models]
-        # 使用 gr.update 來更新下拉選單的選項
         return gr.update(choices=model_names), "Ollama 模型列表已刷新。"
     except requests.exceptions.ConnectionError:
         return gr.update(), "無法連接至 Ollama 服務。請確認其正在本機運行。"
@@ -97,6 +95,7 @@ def restore_session(file_obj):
     return state.meeting_topic, state.format_history_for_display(), notes, "會議紀錄已成功還原。"
 
 def update_preview(text): return text
+
 def toggle_settings():
     state.settings_open = not state.settings_open
     return gr.update(open=state.settings_open)
@@ -161,15 +160,7 @@ with gr.Blocks(title="Insight Cascade", theme=gr.themes.Soft()) as app:
                             test_gemini_button = gr.Button("✔️ 測試金鑰", scale=1)
                     prompt_input = gr.Textbox(label="角色提示詞", value=role["prompt"], lines=8, interactive=True)
 
-                    role_ui_components.append({
-                        "provider": provider_input,
-                        "ollama_group": ollama_settings,
-                        "gemini_group": gemini_settings,
-                        "ollama_model_dropdown": model_name_input,
-                        "refresh_button": refresh_ollama_button,
-                        "api_key_input": api_key_input,
-                        "test_gemini_button": test_gemini_button
-                    })
+                    role_ui_components.append({"provider": provider_input, "ollama": ollama_settings, "gemini": gemini_settings, "ollama_model_dropdown": model_name_input, "refresh_button": refresh_ollama_button, "api_key_input": api_key_input, "test_gemini_button": test_gemini_button})
                     all_role_inputs.extend([name_input, provider_input, model_name_input, api_key_input, prompt_input])
                     all_role_outputs.extend([name_input, provider_input, model_name_input, api_key_input, prompt_input, ollama_settings, gemini_settings])
 
@@ -190,7 +181,7 @@ with gr.Blocks(title="Insight Cascade", theme=gr.themes.Soft()) as app:
     export_session_button.click(export_session, inputs=[chairman_notes_editor], outputs=[session_file_output, status_update])
     end_meeting_button.click(end_meeting, inputs=[chairman_notes_editor], outputs=[conversation_panel, chairman_notes_editor, meeting_topic_textbox, status_update]).then(lambda: "", outputs=question_input).then(lambda: "", outputs=chairman_notes_preview)
     upload_button.upload(restore_session, inputs=[upload_button], outputs=[meeting_topic_textbox, conversation_panel, chairman_notes_editor, status_update])
-    chairman_notes_editor.change(update_preview, inputs=chairman_notes_editor, outputs=[chairman_notes_preview])
+    chairman_notes_editor.change(update_preview, inputs=[chairman_notes_editor], outputs=[chairman_notes_preview])
     settings_button.click(toggle_settings, inputs=None, outputs=[settings_accordion])
 
     def toggle_provider_settings(provider):
@@ -198,7 +189,7 @@ with gr.Blocks(title="Insight Cascade", theme=gr.themes.Soft()) as app:
         return gr.update(visible=is_ollama), gr.update(visible=not is_ollama)
 
     for components in role_ui_components:
-        components["provider"].change(toggle_provider_settings, inputs=components["provider"], outputs=[components["ollama_group"], components["gemini_group"]])
+        components["provider"].change(toggle_provider_settings, inputs=components["provider"], outputs=[components["ollama"], components["gemini"]])
         components["refresh_button"].click(get_ollama_models, outputs=[components["ollama_model_dropdown"], status_update])
         components["test_gemini_button"].click(test_gemini_api_key, inputs=[components["api_key_input"]], outputs=[status_update])
 
