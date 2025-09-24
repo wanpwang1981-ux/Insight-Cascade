@@ -19,6 +19,45 @@
 4.  **等候與同步機制**:
     *   系統將確保在一個 AI 模組完成其發言之前，下一個模組會處於等候狀態，確保對話的有序性。
 
+## 安裝說明
+
+1.  **複製專案庫**
+    ```bash
+    git clone <your-repository-url>
+    cd <repository-folder>
+    ```
+
+2.  **建立並啟用虛擬環境 (建議)**
+    ```bash
+    # For Unix/macOS
+    python3 -m venv venv
+    source venv/bin/activate
+
+    # For Windows
+    python -m venv venv
+    .\venv\Scripts\activate
+    ```
+
+3.  **安裝相依套件**
+    ```bash
+    pip install -r requirements.txt
+    ```
+    *(註：目前此專案尚無外部相依套件。)*
+
+## 操作說明
+
+1.  **執行應用程式**
+    在專案根目錄下，執行以下指令：
+    ```bash
+    python3 main.py
+    ```
+
+2.  **開始對話**
+    程式啟動後，會提示您輸入一個主題。輸入您想討論的主題後按下 Enter，AI 就會開始對話。
+    ```
+    請輸入一個主題來開始對話: [在此處輸入您的主題]
+    ```
+
 ## 專案演進藍圖
 
 *   **階段一：創意發想機器人** - 實現核心的單一 AI 模組對話功能。
