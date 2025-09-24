@@ -101,6 +101,12 @@ uv pip install -r requirements.txt
     請輸入一個主題來開始對話: [在此處輸入您的主題]
     ```
 
+## 常見問題
+
+**Q: 程式執行後，AI 沒有回應，或是出現關於「安全機制」的錯誤訊息。**
+
+**A:** 這是正常的。大型語言模型（如 Gemini）的供應商通常會內建內容安全審核機制。有時候，即使是無害的提示或預期的回覆，也可能觸發這個機制，導致 API 拒絕生成內容。我們的程式已經加入了偵測這種情況的功能。如果遇到這種狀況，請嘗試**換個方式提問**或**修改您的主題**，通常就能解決問題。
+
 ## 專案演進藍圖
 
 *   **階段一：創意發想機器人** - 完成
@@ -112,6 +118,6 @@ uv pip install -r requirements.txt
 
 | 版本  | 日期       | 主要變更                                       |
 | :---- | :--------- | :--------------------------------------------- |
-| v0.3.0| YYYY-MM-DD | - 實現動態多角色對話<br>- 新增 `marketer_bot_v1` 角色<br>- 賦予 `creative_bot_v1` 領導和決策能力 |
+| v0.3.0| YYYY-MM-DD | - 實現動態多角色對話<br>- 新增 `marketer_bot_v1` 角色<br>- 賦予 `creative_bot_v1` 領導和決策能力<br>- 強化 API 回應處理機制 |
 | v0.2.0| YYYY-MM-DD | - 串接 Google Gemini API<br>- 新增 `python-dotenv` 和 `google-generativeai` 套件<br>- 更新 `readme.md` 的 API 金鑰設定說明 |
 | v0.1.0| YYYY-MM-DD | - 專案初始化<br>- 建立 `readme.md` 和系統架構分析文件。 |
