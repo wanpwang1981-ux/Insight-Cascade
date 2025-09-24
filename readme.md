@@ -21,35 +21,66 @@
 
 ## 安裝說明
 
-1.  **複製專案庫**
-    ```bash
-    git clone <your-repository-url>
-    cd <repository-folder>
-    ```
+### 1. 複製專案庫
+```bash
+git clone <your-repository-url>
+cd <repository-folder>
+```
 
-2.  **建立並啟用虛擬環境 (建議)**
-    ```bash
-    # For Unix/macOS
-    python3 -m venv venv
-    source venv/bin/activate
+### 2. 建立並啟用虛擬環境 (建議)
+您可以選擇使用傳統的 `venv` 或是更快速的 `uv`。
 
-    # For Windows
-    python -m venv venv
-    .\venv\Scripts\activate
-    ```
+<details>
+<summary><strong>選項 A: 使用 `venv` (Python 內建)</strong></summary>
 
-3.  **安裝相依套件**
-    ```bash
-    pip install -r requirements.txt
-    ```
-    *(註：目前此專案尚無外部相依套件。)*
+```bash
+# 建立虛擬環境 (在 Windows 上請使用 python)
+python -m venv .venv
+
+# 啟用虛擬環境
+# - macOS / Linux:
+source .venv/bin/activate
+# - Windows:
+.venv\Scripts\activate
+```
+</details>
+
+<details>
+<summary><strong>選項 B: 使用 `uv` (推薦，更快速)</strong></summary>
+
+首先，請確保您已安裝 `uv`。若未安裝，請參考 [uv 官方安裝指南](https://docs.astral.sh/uv/install/)。
+
+```bash
+# 建立虛擬環境
+uv venv
+
+# 啟用虛擬環境
+# - macOS / Linux:
+source .venv/bin/activate
+# - Windows:
+.venv\Scripts\activate
+```
+</details>
+
+### 3. 安裝相依套件
+根據您選擇的工具，執行以下任一指令：
+
+```bash
+# 如果您使用 venv + pip
+pip install -r requirements.txt
+
+# 如果您使用 uv
+uv pip install -r requirements.txt
+```
+*(註：目前此專案尚無外部相依套件。)*
 
 ## 操作說明
 
 1.  **執行應用程式**
-    在專案根目錄下，執行以下指令：
+    在專案根目錄下，執行以下指令。
+    *(註：根據您的系統設定，您可能需要使用 `python3` 而非 `python`)*
     ```bash
-    python3 main.py
+    python main.py
     ```
 
 2.  **開始對話**
@@ -69,5 +100,3 @@
 | 版本  | 日期       | 主要變更                                       |
 | :---- | :--------- | :--------------------------------------------- |
 | v0.1.0 | YYYY-MM-DD | - 專案初始化<br>- 建立 `readme.md` 和系統架構分析文件。 |
-|       |            |                                                |
-|       |            |                                                |
