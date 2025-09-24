@@ -17,9 +17,7 @@ class Orchestrator:
         Args:
             modules_config_dir (str): 儲存模組 JSON 設定檔的目錄路徑。
         """
-        # 屬性：一個字典，用來存放所有已載入的聊天模組實例，以 module_id 為鍵
         self.modules: Dict[str, ChatModule] = self._load_modules(modules_config_dir)
-        # 屬性：一個列表，用來記錄完整的對話歷史
         self.history: List[Dict[str, str]] = []
 
     def _load_modules(self, config_dir: str) -> Dict[str, ChatModule]:
@@ -35,11 +33,9 @@ class Orchestrator:
         for filename in os.listdir(config_dir):
             if filename.endswith(".json"):
                 config_path = os.path.join(config_dir, filename)
-                # 為每個設定檔建立一個 ChatModule 實例
                 module = ChatModule(config_path=config_path)
                 if module.module_id != "unknown_module":
                     print(f"  - 已載入模組: {module.module_id}")
-                    # 將模組實例存入字典
                     loaded_modules[module.module_id] = module
 
         if not loaded_modules:
@@ -50,39 +46,34 @@ class Orchestrator:
     def run_conversation(self, initial_prompt: str, start_module_id: str):
         """
         執行主對話循環。
-
-        Args:
-            initial_prompt (str): 來自使用者的第一則訊息。
-            start_module_id (str): 開始對話的模組 ID。
         """
         print("\n--- 對話開始 ---")
 
-        # 將使用者的初始訊息加入歷史紀錄
         self.history.append({"role": "user", "content": initial_prompt})
         print(f"使用者: {initial_prompt}\n")
 
         current_module_id = start_module_id
+        # 取得所有可用模組的 ID 列表，供 AI 參考
+        available_module_ids = list(self.modules.keys())
 
-        # 循環將持續進行，直到下一個模組的 ID 為 "END"
         while current_module_id != "END":
-            # 安全檢查：確保要呼叫的模組存在
             if current_module_id not in self.modules:
                 print(f"錯誤: 找不到模組 '{current_module_id}'。對話結束。")
                 break
 
-            # 從字典中取得目前的模組實例
             current_module = self.modules[current_module_id]
 
-            # 模組生成回應，並建議下一個模組
-            response_text, next_module_id = current_module.generate_response(self.history)
+            # 模組生成回應，並建議下一個模組。
+            # 我們將可用模組列表傳遞給它，讓它知道有哪些選項。
+            response_text, next_module_id = current_module.generate_response(
+                history=self.history,
+                available_modules=available_module_ids
+            )
 
-            # 在主控台印出回應，方便追蹤
             print(f"{current_module.module_id}: {response_text}\n")
 
-            # 將模組的回應加入歷史紀錄
             self.history.append({"role": current_module.module_id, "content": response_text})
 
-            # 更新為下一個模組的 ID，以進行下一輪循環
             current_module_id = next_module_id
 
         print("--- 對話結束 ---")
