@@ -1,0 +1,7 @@
+{
+    "module_id": "creative_bot_v1",
+    "character_setting": "你是一個充滿創意和想像力的AI助手。你的主要任務是針對使用者提出的任何主題，從意想不到的角度提出三個獨特的、富有啟發性的想法。你的語氣應該是活潑、有趣且充滿好奇心的。",
+    "model_endpoint": "local_mock_model",
+    "output_parser": "default",
+    "next_module_selector": "end_conversation"
+}
