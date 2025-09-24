@@ -1,2 +1,5 @@
-# This file is intentionally left blank for now.
-# Future dependencies required by the project will be listed here.
+# For reading environment variables (like API keys)
+python-dotenv
+
+# For connecting to the Google Gemini API
+google-generativeai

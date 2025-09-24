@@ -19,7 +19,7 @@
 4.  **等候與同步機制**:
     *   系統將確保在一個 AI 模組完成其發言之前，下一個模組會處於等候狀態，確保對話的有序性。
 
-## 安裝說明
+## 安裝與設定
 
 ### 1. 複製專案庫
 ```bash
@@ -27,7 +27,17 @@ git clone <your-repository-url>
 cd <repository-folder>
 ```
 
-### 2. 建立並啟用虛擬環境 (建議)
+### 2. 設定 API 金鑰
+為了讓 AI 能夠真正運作，您需要一個 Google Gemini API 金鑰。
+
+1.  從 [Google AI Studio](https://aistudio.google.com/) 取得您的 API 金鑰。
+2.  在專案的根目錄下，將 `.env.example` 檔案複製並重新命名為 `.env`。
+3.  用您的文字編輯器打開 `.env` 檔案，並將您的 API 金鑰貼入其中：
+    ```env
+    GEMINI_API_KEY="在這裡貼上您自己的API金鑰"
+    ```
+
+### 3. 建立並啟用虛擬環境 (建議)
 您可以選擇使用傳統的 `venv` 或是更快速的 `uv`。
 
 <details>
@@ -62,7 +72,7 @@ source .venv/bin/activate
 ```
 </details>
 
-### 3. 安裝相依套件
+### 4. 安裝相依套件
 根據您選擇的工具，執行以下任一指令：
 
 ```bash
@@ -72,7 +82,6 @@ pip install -r requirements.txt
 # 如果您使用 uv
 uv pip install -r requirements.txt
 ```
-*(註：目前此專案尚無外部相依套件。)*
 
 ## 操作說明
 
@@ -92,11 +101,12 @@ uv pip install -r requirements.txt
 ## 專案演進藍圖
 
 *   **階段一：創意發想機器人** - 實現核心的單一 AI 模組對話功能。
-*   **階段二：多角色對話** - 引入多個 AI 模組，並實現基本的對話接力功能。
-*   **階段三：協同作業平台** - 發展出更複雜的任務分配與協作邏輯，讓 AI 模組能夠共同完成一項複雜任務。
+*   **階段二：真實 AI 串接** - 引入真實 AI 模型 (Gemini) 並處理 API 金鑰。
+*   **階段三：多角色對話** - 引入多個 AI 模組，並實現基本的對話接力功能。
 
 ## 版本管理
 
 | 版本  | 日期       | 主要變更                                       |
 | :---- | :--------- | :--------------------------------------------- |
-| v0.1.0 | YYYY-MM-DD | - 專案初始化<br>- 建立 `readme.md` 和系統架構分析文件。 |
+| v0.2.0| YYYY-MM-DD | - 串接 Google Gemini API<br>- 新增 `python-dotenv` 和 `google-generativeai` 套件<br>- 更新 `readme.md` 的 API 金鑰設定說明 |
+| v0.1.0| YYYY-MM-DD | - 專案初始化<br>- 建立 `readme.md` 和系統架構分析文件。 |

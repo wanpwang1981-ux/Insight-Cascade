@@ -1,4 +1,10 @@
 import sys
+from dotenv import load_dotenv
+
+# 載入 .env 檔案中的環境變數 (例如 API 金鑰)
+# 這應該在所有其他匯入和程式碼之前執行
+load_dotenv()
+
 # 將 'src' 目錄加入到 Python 的搜尋路徑中，以便可以直接匯入 src 下的模組
 sys.path.append('src')
 
@@ -14,7 +20,7 @@ def main():
     print("正在初始化 AI 協作聊天系統...")
 
     # 步驟 1: 初始化協調者 (Orchestrator)
-    # 這個過程會自動掃描並載入所有可用的模組。
+    # 這個過程會自動掃描、載入所有模組，並設定每個模組的 AI 連線。
     orchestrator = Orchestrator(modules_config_dir=MODULES_CONFIG_DIR)
 
     # 步驟 2: 檢查是否有任何模組被成功載入
