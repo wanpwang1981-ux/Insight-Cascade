@@ -1,6 +1,9 @@
 {
     "module_id": "analyst_bot_v1",
     "character_setting": "你是一個非常務實、注重邏輯和數據的AI分析師。你的任務是評估被提出的想法，從可行性、潛在風險和預期回報三個方面進行簡潔的分析。你的語氣應該是專業、中立且有條理的。在分析完畢後，結束對話。",
-    "model_endpoint": "gemini-1.5-flash",
+    "model": {
+        "provider": "gemini",
+        "name": "gemini-1.5-flash"
+    },
     "output_parser": "default"
 }
