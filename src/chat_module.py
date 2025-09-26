@@ -20,7 +20,7 @@ class ChatModule:
 
         model_config = self.config.get("model", {})
         self.model_provider: str = model_config.get("provider", "gemini")
-        self.model_name: str = model_config.get("name", "gemini-1.5-flash")
+        self.model_name: str = model_config.get("name", "gemini-pro")
 
         self.output_parser: str = self.config.get("output_parser", "default")
 
@@ -85,6 +85,27 @@ class ChatModule:
             prompt += "你的任務: 請根據你的角色設定和以上的對話歷史，直接提供你的回應。"
         return prompt
 
+    def list_available_models(self) -> List[str]:
+        """
+        列出目前 API 金鑰可用的對話模型。
+        此功能目前僅支援 Gemini。
+        """
+        if self.model_provider != "gemini":
+            print(f"'{self.model_provider}' 不支援動態列出模型。將使用設定檔中的預設模型。")
+            return [self.model_name]
+
+        try:
+            print("正在向 Google 查詢可用的 Gemini 模型...")
+            available_models = []
+            for m in genai.list_models():
+                if 'generateContent' in m.supported_generation_methods:
+                    available_models.append(m.name.replace("models/", ""))
+            print(f"找到 {len(available_models)} 個可用的對話模型。")
+            return available_models
+        except Exception as e:
+            print(f"錯誤：查詢可用模型時失敗: {e}")
+            return [self.model_name] # 失敗時回傳預設模型
+
     def _build_ollama_messages(self, system_prompt: str, history: List[Dict[str, str]]) -> List[Dict[str, str]]:
         """將我們的歷史紀錄格式轉換為 Ollama 需要的格式。"""
         messages = [{"role": "system", "content": system_prompt}]
@@ -94,21 +115,29 @@ class ChatModule:
             messages.append({"role": role, "content": turn["content"]})
         return messages
 
-    def generate_response(self, history: List[Dict[str, str]], available_modules: List[str]) -> Tuple[str, str]:
-        """生成回應。此版本會根據供應商動態呼叫 Gemini 或 Ollama。"""
-        if not self.client:
-            return f"錯誤：模組 '{self.module_id}' 的 AI 客戶端未被初始化。", "END"
+    def generate_response(self, history: List[Dict[str, str]], available_modules: List[str], model_override_name: str = None) -> Tuple[str, str]:
+        """
+        生成回應。此版本會根據供應商動態呼叫 Gemini 或 Ollama。
+        它還能接受一個臨時的模型名稱來覆寫設定檔中的預設值。
+        """
+        if not self.client and self.model_provider != "gemini":
+             return f"錯誤：模組 '{self.module_id}' 的 AI 客戶端未被初始化。", "END"
+
+        # 決定本次對話實際要使用的模型
+        model_to_use = model_override_name if model_override_name else self.model_name
 
         system_prompt = self.construct_prompt(history, available_modules)
-        print(f"--- 正在為 {self.module_id} (模型: {self.model_provider}/{self.model_name}) 呼叫 API ---")
+        print(f"--- 正在為 {self.module_id} (模型: {self.model_provider}/{model_to_use}) 呼叫 API ---")
 
         response_text = ""
         try:
-            # **核心邏輯：根據供應商選擇不同的 API 呼叫方式**
             if self.model_provider == "gemini":
-                # Gemini 的 prompt 是一個完整的字串
-                response = self.client.generate_content(system_prompt)
-                # **新增的穩健性檢查**
+                # 對於 Gemini，每次都根據指定的模型名稱建立一個臨時的 model 物件
+                if not os.getenv("GEMINI_API_KEY"):
+                    return "錯誤：找不到 GEMINI_API_KEY。", "END"
+                model = genai.GenerativeModel(model_to_use, safety_settings=self.client.safety_settings)
+                response = model.generate_content(system_prompt)
+
                 if not response.candidates:
                     feedback = response.prompt_feedback
                     block_reason = getattr(feedback, 'block_reason', '未知')
@@ -119,9 +148,8 @@ class ChatModule:
                 response_text = candidate.text
 
             elif self.model_provider == "ollama":
-                # Ollama 的 prompt 是 message 列表
                 messages = self._build_ollama_messages(system_prompt, history)
-                response = self.client.chat(model=self.model_name, messages=messages)
+                response = self.client.chat(model=model_to_use, messages=messages)
                 response_text = response['message']['content']
 
             # **通用回應解析邏輯**

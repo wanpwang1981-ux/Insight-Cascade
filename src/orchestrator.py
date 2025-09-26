@@ -43,9 +43,10 @@ class Orchestrator:
 
         return loaded_modules
 
-    def run_conversation(self, initial_prompt: str, start_module_id: str):
+    def run_conversation(self, initial_prompt: str, start_module_id: str, model_override_name: str = None):
         """
         執行主對話循環。
+        可以接受一個臨時的模型名稱來覆寫本次對話的預設模型。
         """
         print("\n--- 對話開始 ---")
 
@@ -53,8 +54,11 @@ class Orchestrator:
         print(f"使用者: {initial_prompt}\n")
 
         current_module_id = start_module_id
-        # 取得所有可用模組的 ID 列表，供 AI 參考
         available_module_ids = list(self.modules.keys())
+
+        # 第一次對話使用使用者指定的模型
+        # 後續的對話（如果有的話）將使用它們各自設定檔中的預設模型
+        is_first_turn = True
 
         while current_module_id != "END":
             if current_module_id not in self.modules:
@@ -63,12 +67,15 @@ class Orchestrator:
 
             current_module = self.modules[current_module_id]
 
-            # 模組生成回應，並建議下一個模組。
-            # 我們將可用模組列表傳遞給它，讓它知道有哪些選項。
+            model_for_this_turn = model_override_name if is_first_turn else None
+
             response_text, next_module_id = current_module.generate_response(
                 history=self.history,
-                available_modules=available_module_ids
+                available_modules=available_module_ids,
+                model_override_name=model_for_this_turn
             )
+
+            is_first_turn = False # 只有第一輪使用覆寫的模型
 
             print(f"{current_module.module_id}: {response_text}\n")
 
