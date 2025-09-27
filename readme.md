@@ -20,12 +20,69 @@
     *   **AI 協作**: 在對話過程中，**領導型角色**能動態決定下一個最適合接手對話的模組。
 
 ## 安裝與設定
-(此處省略安裝說明的細節)
+
+### 1. 複製專案庫
+```bash
+git clone <your-repository-url>
+cd <repository-folder>
+```
+
+### 2. 設定環境變數
+1.  在專案的根目錄下，將 `.env.example` 檔案複製並重新命名為 `.env`。
+2.  用您的文字編輯器打開 `.env` 檔案，並填入您需要的變數。
+    *   若要使用 Gemini，必須填寫 `GEMINI_API_KEY`。
+    *   若您的 Ollama 不在本機，請填寫 `OLLAMA_HOST`。
+
+### 3. 建立並啟用虛擬環境 (建議)
+您可以選擇使用傳統的 `venv` 或是更快速的 `uv`。
+
+<details>
+<summary><strong>選項 A: 使用 `venv` (Python 內建)</strong></summary>
+
+```bash
+# 建立虛擬環境 (在 Windows 上請使用 python)
+python -m venv .venv
+
+# 啟用虛擬環境
+# - macOS / Linux:
+source .venv/bin/activate
+# - Windows:
+.venv\Scripts\activate
+```
+</details>
+
+<details>
+<summary><strong>選項 B: 使用 `uv` (推薦，更快速)</strong></summary>
+
+首先，請確保您已安裝 `uv`。若未安裝，請參考 [uv 官方安裝指南](https://docs.astral.sh/uv/install/)。
+
+```bash
+# 建立虛擬環境
+uv venv
+
+# 啟用虛擬環境
+# - macOS / Linux:
+source .venv/bin/activate
+# - Windows:
+.venv\Scripts\activate
+```
+</details>
+
+### 4. 安裝相依套件
+根據您選擇的工具，執行以下任一指令：
+```bash
+# 如果您使用 venv + pip
+pip install -r requirements.txt
+
+# 如果您使用 uv
+uv pip install -r requirements.txt
+```
 
 ## 操作說明
 
 1.  **執行應用程式**
-    在專案根目錄下，執行以下指令：
+    在專案根目錄下，執行以下指令。
+    *(註：根據您的系統設定，您可能需要使用 `python3` 而非 `python`)*
     ```bash
     python main.py
     ```
@@ -58,7 +115,23 @@
     ```
 
 ## 如何設定一個 Ollama 模組
-(此處省略 Ollama 設定說明的細節)
+您可以輕易地將任何一個 AI 角色切換為使用本地的 Ollama 模型。
+
+1.  **安裝並執行 Ollama**: 請先確保您已依照 [Ollama 官方指南](https://ollama.com/) 安裝了 Ollama，並已下載您想使用的模型（例如 `ollama run llama3`）。
+
+2.  **修改設定檔**: 打開您想修改的角色的 `.json` 設定檔（例如 `configs/modules/analyst_bot.json`）。將 `model` 物件修改如下：
+    ```json
+    "model": {
+        "provider": "ollama",
+        "name": "llama3"
+    }
+    ```
+    *   `provider`: 必須設為 `"ollama"`。
+    *   `name`: 設為您已經在本地下載好的模型名稱。
+
+3.  **(可選) 設定 Ollama 主機**: 如果您的 Ollama 服務不是在本機執行，請在您的 `.env` 檔案中設定 `OLLAMA_HOST` 變數。
 
 ## 常見問題
-(此處省略常見問題的細節)
+**Q: 程式執行後，AI 沒有回應，或是出現關於「安全機制」的錯誤訊息。**
+
+**A:** 這是正常的。大型語言模型（如 Gemini）的供應商通常會內建內容安全審核機制。有時候，即使是無害的提示或預期的回覆，也可能觸發這個機制，導致 API 拒絕生成內容。我們的程式已經加入了偵測這種情況的功能。如果遇到這種狀況，請嘗試**換個方式提問**或**修改您的主題**，通常就能解決問題。
