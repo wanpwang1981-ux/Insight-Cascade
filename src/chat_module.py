@@ -102,7 +102,7 @@ class ChatModule:
             print(f"錯誤：查詢可用模型時失敗: {e}")
             return [self.model_name]
 
-    def _build_ollama_messages(self, history: List[Dict[str, str]], available_modules: List[str]]) -> List[Dict[str, str]]:
+    def _build_ollama_messages(self, history: List[Dict[str, str]], available_modules: List[str]) -> List[Dict[str, str]]:
         """將我們的歷史紀錄格式轉換為 Ollama 需要的格式。"""
         # 為 Ollama 也建立結構化的系統提示
         system_prompt = self._construct_gemini_prompt(history, available_modules)

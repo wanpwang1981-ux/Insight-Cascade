@@ -1,8 +1,8 @@
 import os
 import json
 from typing import List, Dict, Any
+from datetime import datetime
 
-# 匯入我們剛剛建立的 ChatModule 類別
 from chat_module import ChatModule
 
 class Orchestrator:
@@ -13,12 +13,14 @@ class Orchestrator:
     def __init__(self, modules_config_dir: str):
         """
         初始化協調者 (Orchestrator)。
-
-        Args:
-            modules_config_dir (str): 儲存模組 JSON 設定檔的目錄路徑。
         """
         self.modules: Dict[str, ChatModule] = self._load_modules(modules_config_dir)
-        self.history: List[Dict[str, str]] = []
+        self.history: List[Dict[str, Any]] = []
+
+    def load_history(self, history_data: List[Dict[str, Any]]):
+        """從外部載入一個已存在的對話歷史。"""
+        self.history = history_data
+        print(f"已成功載入 {len(self.history)} 則對話紀錄。")
 
     def _load_modules(self, config_dir: str) -> Dict[str, ChatModule]:
         """
@@ -43,21 +45,24 @@ class Orchestrator:
 
         return loaded_modules
 
-    def run_conversation(self, initial_prompt: str, start_module_id: str, model_override_name: str = None):
+    def add_to_history(self, role: str, content: Any):
+        """一個公開的輔助函式，用來將帶有時間戳的紀錄加入歷史。"""
+        entry = {
+            "role": role,
+            "content": content,
+            "timestamp": datetime.now().isoformat()
+        }
+        self.history.append(entry)
+        print(f"使用者: {content}\n")
+
+    def run_conversation_loop(self, start_module_id: str, model_override_name: str = None):
         """
-        執行主對話循環。
-        可以接受一個臨時的模型名稱來覆寫本次對話的預設模型。
+        執行主對話循環。這個函式現在假設對話歷史中已經至少有一則訊息。
         """
         print("\n--- 對話開始 ---")
 
-        self.history.append({"role": "user", "content": initial_prompt})
-        print(f"使用者: {initial_prompt}\n")
-
         current_module_id = start_module_id
         available_module_ids = list(self.modules.keys())
-
-        # 第一次對話使用使用者指定的模型
-        # 後續的對話（如果有的話）將使用它們各自設定檔中的預設模型
         is_first_turn = True
 
         while current_module_id != "END":
@@ -75,12 +80,34 @@ class Orchestrator:
                 model_override_name=model_for_this_turn
             )
 
-            is_first_turn = False # 只有第一輪使用覆寫的模型
+            is_first_turn = False
 
             print(f"{current_module.module_id}: {response_text}\n")
 
-            self.history.append({"role": current_module.module_id, "content": response_text})
+            # 將 AI 的回覆加入歷史
+            self._add_to_history(current_module.module_id, response_text)
 
             current_module_id = next_module_id
 
         print("--- 對話結束 ---")
+        self.save_memory()
+
+    def save_memory(self):
+        """將目前的對話歷史儲存到 memory/ 資料夾中。"""
+        if not self.history:
+            print("對話歷史為空，無需儲存。")
+            return
+
+        if not os.path.exists("memory"):
+            os.makedirs("memory")
+            print("已建立 memory/ 資料夾。")
+
+        timestamp_str = self.history[0]["timestamp"].replace(":", "-").replace(".", "-")
+        filename = f"memory/conversation_{timestamp_str}.json"
+
+        try:
+            with open(filename, 'w', encoding='utf-8') as f:
+                json.dump(self.history, f, ensure_ascii=False, indent=4)
+            print(f"對話歷史已成功儲存至: {filename}")
+        except Exception as e:
+            print(f"錯誤：儲存對話歷史時失敗: {e}")
