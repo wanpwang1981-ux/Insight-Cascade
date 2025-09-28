@@ -4,6 +4,14 @@ from typing import List, Dict, Tuple, Any
 import google.generativeai as genai
 import ollama
 
+# 全域定義安全設定，方便重複使用
+SAFETY_SETTINGS = [
+    {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+    {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
+    {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+    {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
+]
+
 class ChatModule:
     """
     代表一個獨立的 AI 聊天模組（一個 AI 角色）。
@@ -20,39 +28,27 @@ class ChatModule:
 
         model_config = self.config.get("model", {})
         self.model_provider: str = model_config.get("provider", "gemini")
-        self.model_name: str = model_config.get("name", "gemini-pro")
+        self.model_name: str = model_config.get("name", "gemini-1.5-flash-lite")
 
         self.output_parser: str = self.config.get("output_parser", "default")
 
+        # client 只為非 Gemini 的供應商在啟動時初始化
         self.client = None
         self._initialize_client()
 
     def _initialize_client(self):
-        """根據供應商初始化對應的 AI 客戶端。"""
-        print(f"正在為模組 '{self.module_id}' 初始化模型供應商 '{self.model_provider}'...")
+        """根據供應商初始化對應的 AI 客戶端。Gemini 的 client 將在需要時動態建立。"""
+        print(f"正在為模組 '{self.module_id}' 準備模型供應商 '{self.model_provider}'...")
         if self.model_provider == "gemini":
-            api_key = os.getenv("GEMINI_API_KEY")
-            if api_key:
-                try:
-                    genai.configure(api_key=api_key)
-                    safety_settings = [
-                        {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
-                        {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
-                        {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
-                        {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
-                    ]
-                    self.client = genai.GenerativeModel(self.model_name, safety_settings=safety_settings)
-                    print(f"  - Gemini 模型 ({self.model_name}) 已成功設定。")
-                except Exception as e:
-                    print(f"  - 錯誤：設定 Gemini 時發生錯誤: {e}")
-            else:
+            if not os.getenv("GEMINI_API_KEY"):
                 print(f"  - 警告：找不到 GEMINI_API_KEY。")
+            else:
+                print(f"  - Gemini API 金鑰已找到，將在需要時使用。")
 
         elif self.model_provider == "ollama":
             try:
-                host = os.getenv("OLLAMA_HOST") # 允許自訂 host
+                host = os.getenv("OLLAMA_HOST")
                 self.client = ollama.Client(host=host)
-                # 檢查與Ollama服務的連線
                 self.client.list()
                 print(f"  - Ollama 客戶端已成功設定 (主機: {host or '預設'})。")
             except Exception as e:
@@ -73,7 +69,6 @@ class ChatModule:
     def construct_prompt(self, history: List[Dict[str, str]], available_modules: List[str]) -> str:
         """為 AI 模型建構一個詳細的系統提示 (System Prompt)。"""
         prompt = f"系統提示: {self.character_setting}\n\n"
-
         if self.output_parser == "json":
             next_module_options = [m for m in available_modules if m != self.module_id]
             prompt += "--- 你的任務 ---\n"
@@ -81,84 +76,82 @@ class ChatModule:
             prompt += f"2. 決定下一個要對話的模組是誰。可用的選項有：{next_module_options}。如果對話應該結束，請使用 'END'。\n"
             prompt += "3. **你的整個輸出必須是一個 RFC 8259 標準的 JSON 物件**，不包含任何額外的文字或解釋。格式如下:\n"
             prompt += '{\n  "response": "你想要對使用者說的話。",\n  "next_module": "下一個模組的 ID"\n}'
-        else: # default parser
+        else:
             prompt += "你的任務: 請根據你的角色設定和以上的對話歷史，直接提供你的回應。"
         return prompt
 
     def list_available_models(self) -> List[str]:
-        """
-        列出目前 API 金鑰可用的對話模型。
-        此功能目前僅支援 Gemini。
-        """
+        """列出目前 API 金鑰可用的對話模型。此功能目前僅支援 Gemini。"""
         if self.model_provider != "gemini":
             print(f"'{self.model_provider}' 不支援動態列出模型。將使用設定檔中的預設模型。")
             return [self.model_name]
 
         try:
+            api_key = os.getenv("GEMINI_API_KEY")
+            if not api_key:
+                print("錯誤：無法查詢可用模型，因為找不到 GEMINI_API_KEY。")
+                return [self.model_name]
+            # **修正**: 在查詢前，先用乾淨的狀態設定 API 金鑰
+            genai.configure(api_key=api_key)
+
             print("正在向 Google 查詢可用的 Gemini 模型...")
             available_models = []
             for m in genai.list_models():
                 if 'generateContent' in m.supported_generation_methods:
                     available_models.append(m.name.replace("models/", ""))
             print(f"找到 {len(available_models)} 個可用的對話模型。")
-            return available_models
+            return available_models if available_models else [self.model_name]
         except Exception as e:
             print(f"錯誤：查詢可用模型時失敗: {e}")
-            return [self.model_name] # 失敗時回傳預設模型
+            return [self.model_name]
 
     def _build_ollama_messages(self, system_prompt: str, history: List[Dict[str, str]]) -> List[Dict[str, str]]:
         """將我們的歷史紀錄格式轉換為 Ollama 需要的格式。"""
         messages = [{"role": "system", "content": system_prompt}]
         for turn in history:
-            # Ollama 的角色是 'user' 和 'assistant'
             role = "assistant" if turn["role"] != "user" else "user"
             messages.append({"role": role, "content": turn["content"]})
         return messages
 
     def generate_response(self, history: List[Dict[str, str]], available_modules: List[str], model_override_name: str = None) -> Tuple[str, str]:
-        """
-        生成回應。此版本會根據供應商動態呼叫 Gemini 或 Ollama。
-        它還能接受一個臨時的模型名稱來覆寫設定檔中的預設值。
-        """
-        if not self.client and self.model_provider != "gemini":
-             return f"錯誤：模組 '{self.module_id}' 的 AI 客戶端未被初始化。", "END"
-
-        # 決定本次對話實際要使用的模型
+        """生成回應。此版本會根據供應商動態呼叫 Gemini 或 Ollama。"""
         model_to_use = model_override_name if model_override_name else self.model_name
-
         system_prompt = self.construct_prompt(history, available_modules)
         print(f"--- 正在為 {self.module_id} (模型: {self.model_provider}/{model_to_use}) 呼叫 API ---")
 
-        response_text = ""
         try:
             if self.model_provider == "gemini":
-                # 對於 Gemini，每次都根據指定的模型名稱建立一個臨時的 model 物件
-                if not os.getenv("GEMINI_API_KEY"):
-                    return "錯誤：找不到 GEMINI_API_KEY。", "END"
-                model = genai.GenerativeModel(model_to_use, safety_settings=self.client.safety_settings)
+                model = genai.GenerativeModel(model_to_use, safety_settings=SAFETY_SETTINGS)
                 response = model.generate_content(system_prompt)
 
                 if not response.candidates:
                     feedback = response.prompt_feedback
                     block_reason = getattr(feedback, 'block_reason', '未知')
                     return f"抱歉，Gemini請求似乎因 '{block_reason}' 而被攔截。", "END"
+
                 candidate = response.candidates[0]
                 if candidate.finish_reason.name != "STOP":
                     return f"抱歉，AI因為 '{candidate.finish_reason.name}' 的原因提前中止了回應。", "END"
-                response_text = candidate.text
+
+                # **修正**: 使用更安全的方式提取文字內容
+                if candidate.content and candidate.content.parts:
+                    response_text = candidate.content.parts[0].text
+                else:
+                    response_text = "" # 如果沒有內容部分，則回傳空字串
 
             elif self.model_provider == "ollama":
+                if not self.client:
+                     return f"錯誤：模組 '{self.module_id}' 的 Ollama 客戶端未被初始化。", "END"
                 messages = self._build_ollama_messages(system_prompt, history)
                 response = self.client.chat(model=model_to_use, messages=messages)
                 response_text = response['message']['content']
 
-            # **通用回應解析邏輯**
             if self.output_parser == "json":
                 cleaned_response_text = response_text.strip().replace("```json", "").replace("```", "").strip()
                 parsed_output = json.loads(cleaned_response_text)
                 final_response = parsed_output.get("response", "錯誤：AI回傳的JSON中缺少 'response' 欄位。")
                 next_module = parsed_output.get("next_module", "END")
-            else: # default parser
+            else:
                 final_response = response_text
                 next_module = "END"
 
