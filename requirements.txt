@@ -1,0 +1,8 @@
+# For reading environment variables (like API keys)
+python-dotenv
+
+# For connecting to the Google Gemini API
+google-generativeai
+
+# For connecting to a local Ollama instance
+ollama
