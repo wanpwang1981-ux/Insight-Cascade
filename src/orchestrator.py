@@ -53,7 +53,9 @@ class Orchestrator:
             "timestamp": datetime.now().isoformat()
         }
         self.history.append(entry)
-        print(f"使用者: {content}\n")
+        # 只有使用者的新提示需要明確印出，AI的回應由主循環處理
+        if role == "user":
+            print(f"使用者: {content}\n")
 
     def run_conversation_loop(self, start_module_id: str, model_override_name: str = None):
         """
@@ -84,8 +86,8 @@ class Orchestrator:
 
             print(f"{current_module.module_id}: {response_text}\n")
 
-            # 將 AI 的回覆加入歷史
-            self._add_to_history(current_module.module_id, response_text)
+            # **修正**: 呼叫正確的公開方法 add_to_history
+            self.add_to_history(current_module.module_id, response_text)
 
             current_module_id = next_module_id
 

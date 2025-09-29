@@ -87,20 +87,34 @@ class ChatModule:
         return prompt
 
     def list_available_models(self) -> List[str]:
-        """列出目前 API 金鑰可用的對話模型。此功能目前僅支援 Gemini。"""
-        if self.model_provider != "gemini":
-            return [self.model_name]
-        try:
-            api_key = os.getenv("GEMINI_API_KEY")
-            if not api_key: return [self.model_name]
-            genai.configure(api_key=api_key)
-            print("正在向 Google 查詢可用的 Gemini 模型...")
-            models = [m.name.replace("models/", "") for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-            print(f"找到 {len(models)} 個可用的對話模型。")
-            return models if models else [self.model_name]
-        except Exception as e:
-            print(f"錯誤：查詢可用模型時失敗: {e}")
-            return [self.model_name]
+        """根據供應商，動態列出可用的對話模型。"""
+        print(f"正在為 '{self.model_provider}' 查詢可用模型...")
+        if self.model_provider == "gemini":
+            try:
+                api_key = os.getenv("GEMINI_API_KEY")
+                if not api_key: return [self.model_name]
+                genai.configure(api_key=api_key)
+                models = [m.name.replace("models/", "") for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+                print(f"找到 {len(models)} 個可用的 Gemini 對話模型。")
+                return models if models else [self.model_name]
+            except Exception as e:
+                print(f"錯誤：查詢 Gemini 可用模型時失敗: {e}")
+                return [self.model_name]
+
+        elif self.model_provider == "ollama":
+            try:
+                if not self.client:
+                    print("Ollama 客戶端未初始化，無法查詢模型。")
+                    return [self.model_name]
+                response = self.client.list()
+                models = [m['name'] for m in response.get('models', [])]
+                print(f"找到 {len(models)} 個本地 Ollama 模型。")
+                return models if models else [self.model_name]
+            except Exception as e:
+                print(f"錯誤：查詢 Ollama 本地模型時失敗: {e}")
+                return [self.model_name]
+
+        return [self.model_name]
 
     def _build_ollama_messages(self, history: List[Dict[str, str]], available_modules: List[str]) -> List[Dict[str, str]]:
         """將我們的歷史紀錄格式轉換為 Ollama 需要的格式。"""

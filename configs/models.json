@@ -1,0 +1,26 @@
+{
+  "gemini": [
+    {
+      "name": "gemini-1.5-pro",
+      "is_favorite": true
+    },
+    {
+      "name": "gemini-1.5-flash",
+      "is_favorite": false
+    },
+    {
+      "name": "gemini-pro",
+      "is_favorite": false
+    }
+  ],
+  "openai": [
+    {
+      "name": "gpt-4o",
+      "is_favorite": true
+    },
+    {
+      "name": "gpt-3.5-turbo",
+      "is_favorite": false
+    }
+  ]
+}
