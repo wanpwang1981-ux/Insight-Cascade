@@ -74,13 +74,30 @@ class Orchestrator:
 
             current_module = self.modules[current_module_id]
 
-            model_for_this_turn = model_override_name if is_first_turn else None
+            # **核心邏輯：檢查是否有特殊動作**
+            special_action = current_module.config.get("special_action")
 
-            response_text, next_module_id = current_module.generate_response(
-                history=self.history,
-                available_modules=available_module_ids,
-                model_override_name=model_for_this_turn
-            )
+            if special_action == "list_models":
+                print(f"執行特殊動作：為所有已載入的 Gemini 模組列出可用模型...")
+                # 遍歷所有模組，找到 Gemini provider 的來執行 list_models
+                all_models_text = ""
+                for mod in self.modules.values():
+                    if mod.model_provider == "gemini":
+                        models = mod.list_available_models()
+                        all_models_text += f"\n--- {mod.module_id} (Gemini) 可用模型 ---\n"
+                        all_models_text += "\n".join(f"- {m}" for m in models)
+                        all_models_text += "\n"
+                        break # 只需要執行一次查詢即可
+                response_text = all_models_text if all_models_text else "找不到任何 Gemini 模組來查詢模型。"
+                next_module_id = "END"
+            else:
+                # **正常對話流程**
+                model_for_this_turn = model_override_name if is_first_turn else None
+                response_text, next_module_id = current_module.generate_response(
+                    history=self.history,
+                    available_modules=available_module_ids,
+                    model_override_name=model_for_this_turn
+                )
 
             is_first_turn = False
 

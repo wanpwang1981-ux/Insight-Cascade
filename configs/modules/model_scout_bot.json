@@ -1,0 +1,10 @@
+{
+    "module_id": "model_scout_bot_v1",
+    "character_setting": "我是一個模型偵察兵。我的任務是查詢並回報目前環境中所有可用的 AI 模型。",
+    "model": {
+        "provider": "system",
+        "name": "local_function"
+    },
+    "output_parser": "default",
+    "special_action": "list_models"
+}
